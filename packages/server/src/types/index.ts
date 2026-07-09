@@ -20,6 +20,8 @@ export interface OptimizeRequest {
   margins?: Margins;
   density?: Density;
   precision?: number;
+  /** 是否在排版前跑一遍确定性的格式清理（空行折叠、代码语言标注归一化等），默认不开启 */
+  cleanup?: boolean;
 }
 
 /** 单次迭代记录 */

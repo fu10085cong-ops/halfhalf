@@ -3,6 +3,16 @@
 export type PaperSize = 'A4' | 'A5' | 'Letter';
 export type Density = 'compact' | 'normal' | 'loose';
 
+export interface OptimizeRequest {
+  markdown: string;
+  targetPages: number;
+  paperSize?: PaperSize;
+  margins?: { top: number; bottom: number; left: number; right: number };
+  density?: Density;
+  precision?: number;
+  cleanup?: boolean;
+}
+
 export interface IterationRecord {
   fontSize: number;
   pages: number;

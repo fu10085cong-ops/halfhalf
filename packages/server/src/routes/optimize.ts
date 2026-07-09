@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { IterationRecord, OptimizeRequest, OptimizeResult } from '../types/index.js';
 import { DEFAULT_MARGINS, SEARCH_CONFIG } from '../types/index.js';
 import { searchOptimalFontSize } from '../engine/binary-search.js';
+import { cleanupMarkdown } from '../engine/markdown-cleanup.js';
 import { saveJob } from '../engine/job-store.js';
 
 export const optimizeRouter = Router();
@@ -26,13 +27,15 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
   }
 
   // 填充默认值（margins 按字段合并，避免用户只传部分边距时把其余边距重置为 undefined）
+  // cleanup 默认不开启：格式清理是用户主动选择的操作，不悄悄改动用户输入的内容
   const params: Required<OptimizeRequest> = {
-    markdown: body.markdown,
+    markdown: body.cleanup ? cleanupMarkdown(body.markdown) : body.markdown,
     targetPages: body.targetPages,
     paperSize: body.paperSize || 'A4',
     margins: { ...DEFAULT_MARGINS, ...body.margins },
     density: body.density || 'normal',
     precision: body.precision || SEARCH_CONFIG.defaultPrecision,
+    cleanup: body.cleanup ?? false,
   };
 
   // SSE 响应头
