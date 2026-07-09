@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Temp files
+tmp/
+temp/
+*.tmp
+
+# Playwright
+playwright-report/
+test-results/
+
+# Fonts (large binary files, managed separately)
+fonts/*.otf
+fonts/*.ttf
+fonts/*.woff2
+!fonts/.gitkeep
+
+# PDF output (for testing)
+*.pdf

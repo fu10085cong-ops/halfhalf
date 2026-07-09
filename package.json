@@ -1,0 +1,16 @@
+{
+  "name": "halfhalf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markdown 自动分页排版系统 — 自动寻找最大字号使文档恰好排版进指定页数",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @halfhalf/server dev\" \"pnpm --filter @halfhalf/web dev\"",
+    "build": "pnpm --filter @halfhalf/server build && pnpm --filter @halfhalf/web build",
+    "lint": "pnpm --filter '*' lint",
+    "clean": "pnpm --filter '*' clean"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
