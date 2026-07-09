@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
-import type { OptimizeRequest, OptimizeResult } from '../types/index.js';
+import { v4 as uuidv4 } from 'uuid';
+import type { IterationRecord, OptimizeRequest, OptimizeResult } from '../types/index.js';
 import { DEFAULT_MARGINS, SEARCH_CONFIG } from '../types/index.js';
+import { searchOptimalFontSize } from '../engine/binary-search.js';
+import { saveJob } from '../engine/job-store.js';
 
 export const optimizeRouter = Router();
 
@@ -22,12 +25,12 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
     return;
   }
 
-  // 填充默认值
+  // 填充默认值（margins 按字段合并，避免用户只传部分边距时把其余边距重置为 undefined）
   const params: Required<OptimizeRequest> = {
     markdown: body.markdown,
     targetPages: body.targetPages,
     paperSize: body.paperSize || 'A4',
-    margins: body.margins || DEFAULT_MARGINS,
+    margins: { ...DEFAULT_MARGINS, ...body.margins },
     density: body.density || 'normal',
     precision: body.precision || SEARCH_CONFIG.defaultPrecision,
   };
@@ -43,20 +46,20 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
   };
 
   try {
-    // TODO: 实际二分搜索逻辑将在 engine 模块中实现
-    // 当前返回占位结果
-    sendEvent('progress', {
-      fontSize: 12,
-      pages: 5,
-      withinLimit: true,
-      message: '二分搜索引擎尚未实现，返回占位数据',
+    const outcome = await searchOptimalFontSize(params, (record: IterationRecord) => {
+      sendEvent('progress', record);
     });
 
+    const jobId = uuidv4();
+    saveJob(jobId, outcome.pdfBuffer);
+
     const result: OptimizeResult = {
-      optimalFontSize: 12,
-      actualPages: 5,
-      iterations: 1,
-      history: [],
+      optimalFontSize: outcome.optimalFontSize,
+      actualPages: outcome.actualPages,
+      iterations: outcome.iterations,
+      history: outcome.history,
+      withinTargetPages: outcome.actualPages <= params.targetPages,
+      jobId,
     };
 
     sendEvent('result', result);

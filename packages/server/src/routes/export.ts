@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { getJob } from '../engine/job-store.js';
 
 export const exportRouter = Router();
 
@@ -6,9 +7,15 @@ export const exportRouter = Router();
  * GET /api/download/:jobId/pdf
  * 下载最终优化后的 PDF
  */
-exportRouter.get('/download/:jobId/pdf', (_req: Request, res: Response) => {
-  // TODO: 从任务存储中获取 PDF 并返回
-  res.status(501).json({ error: 'PDF 导出功能尚未实现' });
+exportRouter.get('/download/:jobId/pdf', (req: Request, res: Response) => {
+  const job = getJob(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: '任务不存在或已过期' });
+    return;
+  }
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="halfhalf-${req.params.jobId}.pdf"`);
+  res.send(job.pdfBuffer);
 });
 
 /**

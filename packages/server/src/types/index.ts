@@ -36,6 +36,10 @@ export interface OptimizeResult {
   actualPages: number;
   iterations: number;
   history: IterationRecord[];
+  /** 是否成功控制在目标页数内；内容过长时可能为 false，此时返回的是最小字号下的最佳结果 */
+  withinTargetPages: boolean;
+  /** 用于下载最终 PDF 的任务 ID */
+  jobId: string;
 }
 
 /** 纸张尺寸预设 */

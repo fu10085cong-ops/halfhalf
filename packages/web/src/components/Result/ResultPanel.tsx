@@ -61,17 +61,20 @@ export default function ResultPanel({
           alignItems: 'center',
           gap: 16,
           padding: '12px 16px',
-          background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
+          background: result.withinTargetPages
+            ? 'linear-gradient(135deg, #ecfdf5, #d1fae5)'
+            : 'linear-gradient(135deg, #fffbeb, #fef3c7)',
           borderRadius: 8,
           marginBottom: history.length > 0 ? 12 : 0,
         }}>
-          <span style={{ fontSize: 28 }}>✅</span>
+          <span style={{ fontSize: 28 }}>{result.withinTargetPages ? '✅' : '⚠️'}</span>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#065f46' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: result.withinTargetPages ? '#065f46' : '#92400e' }}>
               最佳字号：<span style={{ fontSize: 24 }}>{result.optimalFontSize}pt</span>
             </div>
-            <div style={{ fontSize: 13, color: '#047857', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: result.withinTargetPages ? '#047857' : '#92400e', marginTop: 2 }}>
               实际页数：{result.actualPages} 页 · 搜索 {result.iterations} 次
+              {!result.withinTargetPages && '（内容过多，已使用最小字号仍无法压至目标页数）'}
             </div>
           </div>
         </div>

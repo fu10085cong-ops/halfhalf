@@ -1,0 +1,54 @@
+/**
+ * 手动验证脚本：直接调用排版引擎跑 fixtures/sample.md，不经过 HTTP/SSE。
+ * 用于快速排查 Mermaid 路径解析、KaTeX 字体加载、Shiki 高亮等本地环境相关的集成风险点。
+ *
+ * 用法：
+ *   cd packages/server
+ *   npx tsx test/run-fixture.ts [targetPages]
+ */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { searchOptimalFontSize } from '../src/engine/binary-search.js';
+import { DEFAULT_MARGINS } from '../src/types/index.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function main() {
+  const targetPages = Number(process.argv[2] || 2);
+  const fixturePath = path.join(__dirname, 'fixtures/sample.md');
+  const markdown = readFileSync(fixturePath, 'utf-8');
+
+  console.log(`[run-fixture] 目标页数: ${targetPages}`);
+  console.log('[run-fixture] 开始二分搜索...');
+
+  const outcome = await searchOptimalFontSize(
+    {
+      markdown,
+      targetPages,
+      paperSize: 'A4',
+      margins: DEFAULT_MARGINS,
+      density: 'normal',
+      precision: 0.5,
+    },
+    (record) => {
+      console.log(
+        `  迭代: fontSize=${record.fontSize}pt pages=${record.pages} withinLimit=${record.withinLimit}`
+      );
+    }
+  );
+
+  const outputPath = path.join(__dirname, 'fixtures/sample.output.pdf');
+  writeFileSync(outputPath, outcome.pdfBuffer);
+
+  console.log('[run-fixture] 完成');
+  console.log(`  最佳字号: ${outcome.optimalFontSize}pt`);
+  console.log(`  实际页数: ${outcome.actualPages}`);
+  console.log(`  迭代次数: ${outcome.iterations}`);
+  console.log(`  PDF 输出: ${outputPath}`);
+}
+
+main().catch((err) => {
+  console.error('[run-fixture] 失败:', err);
+  process.exit(1);
+});

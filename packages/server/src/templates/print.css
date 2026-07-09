@@ -1,0 +1,151 @@
+/* HalfHalf 打印排版样式
+ * 纸张尺寸/页边距通过 Playwright page.pdf() 的物理参数控制，
+ * 这里只负责正文排版和「原子块」（代码块/公式/图表/图片）的分页保护规则。
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: #1a1a1a;
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.hh-page {
+  width: var(--content-width);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+}
+
+p,
+ul,
+ol,
+blockquote,
+table,
+.hh-mermaid,
+figure {
+  margin: 0 0 var(--paragraph-spacing) 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  break-after: avoid;
+  break-inside: avoid;
+  margin: 1.2em 0 0.5em 0;
+  line-height: 1.3;
+}
+
+/* 标题不孤行：标题后紧跟的第一个块不允许被单独分到上一页 */
+h1 + *,
+h2 + *,
+h3 + *,
+h4 + * {
+  break-before: avoid;
+}
+
+/* 代码块：Shiki 输出的 <pre class="shiki"> 结构 */
+pre,
+code {
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+pre {
+  /* 尽量整体不跨页；若代码块本身比一页还长，浏览器会在无法避免时打断，
+     保证内容不丢失，而不是被裁切消失 */
+  break-inside: avoid;
+  max-width: 100%;
+  padding: 0.6em 0.8em;
+  border-radius: 4px;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+pre.hh-code-fallback {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+}
+
+:not(pre) > code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  break-inside: avoid;
+}
+
+th,
+td {
+  border: 1px solid #d0d0d0;
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  break-inside: avoid;
+}
+
+blockquote {
+  border-left: 3px solid #d0d0d0;
+  padding: 0.2em 1em;
+  color: #555;
+  break-inside: avoid;
+}
+
+/* KaTeX 公式：行内公式允许换行，独立公式块保护不被切断 */
+.katex-display {
+  break-inside: avoid;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+
+/* Mermaid 图表：预渲染阶段会把占位 div 替换成内联 SVG */
+.hh-mermaid-pending {
+  display: none;
+}
+
+.hh-mermaid {
+  break-inside: avoid;
+  text-align: center;
+}
+
+.hh-mermaid svg {
+  max-width: var(--content-width);
+  height: auto;
+}
+
+.hh-mermaid-error {
+  color: #991b1b;
+  background: #fef2f2;
+  padding: 0.6em;
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+
+/* 普通图片：按页面内容区宽高等比缩放，避免溢出单页 */
+.hh-image {
+  display: block;
+  max-width: var(--content-width);
+  max-height: var(--content-height);
+  width: auto;
+  height: auto;
+  margin: 0.6em auto;
+  break-inside: avoid;
+}

@@ -16,4 +16,6 @@ export interface OptimizeResult {
   actualPages: number;
   iterations: number;
   history: IterationRecord[];
+  withinTargetPages: boolean;
+  jobId: string;
 }

@@ -11,14 +11,19 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:fixture": "tsx test/run-fixture.ts"
   },
   "dependencies": {
     "express": "^4.21.0",
     "markdown-it": "^14.1.0",
     "markdown-it-katex": "^2.0.3",
+    "katex": "^0.16.11",
+    "shiki": "^1.24.0",
+    "mermaid": "^11.4.0",
     "handlebars": "^4.7.8",
     "pdf-lib": "^1.17.1",
+    "playwright": "^1.45.0",
     "cors": "^2.8.5",
     "uuid": "^10.0.0"
   },
@@ -27,7 +32,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/cors": "^2.8.17",
     "@types/uuid": "^10.0.0",
-    "playwright": "^1.45.0",
+    "@types/node": "^20.14.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }
