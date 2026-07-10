@@ -3,7 +3,7 @@ import AppLayout from './components/Layout/AppLayout';
 import MarkdownEditor from './components/Editor/MarkdownEditor';
 import ParameterPanel from './components/Config/ParameterPanel';
 import ResultPanel from './components/Result/ResultPanel';
-import type { OptimizeResult, IterationRecord } from './types';
+import type { OptimizeResult, IterationRecord, PaperSize, Density } from './types';
 
 function App() {
   const [markdown, setMarkdown] = useState(`# 你好，HalfHalf！
@@ -34,8 +34,11 @@ function hello() {
 `);
 
   const [targetPages, setTargetPages] = useState(5);
-  const [paperSize, setPaperSize] = useState<'A4' | 'A5' | 'Letter'>('A4');
-  const [density, setDensity] = useState<'compact' | 'normal' | 'loose'>('normal');
+  const [paperSize, setPaperSize] = useState<PaperSize>('A4');
+  const [density, setDensity] = useState<Density>('normal');
+  const [cleanup, setCleanup] = useState(false);
+  const [margins, setMargins] = useState({ top: 10, bottom: 10, left: 10, right: 10 });
+  const [precision, setPrecision] = useState(0.5);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [history, setHistory] = useState<IterationRecord[]>([]);
@@ -56,6 +59,9 @@ function hello() {
           targetPages,
           paperSize,
           density,
+          cleanup,
+          margins,
+          precision,
         }),
       });
 
@@ -124,6 +130,12 @@ function hello() {
             onPaperSizeChange={setPaperSize}
             density={density}
             onDensityChange={setDensity}
+            cleanup={cleanup}
+            onCleanupChange={setCleanup}
+            margins={margins}
+            onMarginsChange={setMargins}
+            precision={precision}
+            onPrecisionChange={setPrecision}
             onOptimize={handleOptimize}
             isOptimizing={isOptimizing}
           />

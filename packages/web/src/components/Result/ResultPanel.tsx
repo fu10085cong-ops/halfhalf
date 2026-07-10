@@ -57,26 +57,49 @@ export default function ResultPanel({
       {/* 结果概览 */}
       {result && (
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: '12px 16px',
           background: result.withinTargetPages
             ? 'linear-gradient(135deg, #ecfdf5, #d1fae5)'
             : 'linear-gradient(135deg, #fffbeb, #fef3c7)',
           borderRadius: 8,
           marginBottom: history.length > 0 ? 12 : 0,
         }}>
-          <span style={{ fontSize: 28 }}>{result.withinTargetPages ? '✅' : '⚠️'}</span>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: result.withinTargetPages ? '#065f46' : '#92400e' }}>
-              最佳字号：<span style={{ fontSize: 24 }}>{result.optimalFontSize}pt</span>
-            </div>
-            <div style={{ fontSize: 13, color: result.withinTargetPages ? '#047857' : '#92400e', marginTop: 2 }}>
-              实际页数：{result.actualPages} 页 · 搜索 {result.iterations} 次
-              {!result.withinTargetPages && '（内容过多，已使用最小字号仍无法压至目标页数）'}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            padding: '12px 16px',
+          }}>
+            <span style={{ fontSize: 28 }}>{result.withinTargetPages ? '✅' : '⚠️'}</span>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: result.withinTargetPages ? '#065f46' : '#92400e' }}>
+                最佳字号：<span style={{ fontSize: 24 }}>{result.optimalFontSize}pt</span>
+              </div>
+              <div style={{ fontSize: 13, color: result.withinTargetPages ? '#047857' : '#92400e', marginTop: 2 }}>
+                实际页数：{result.actualPages} 页 · 搜索 {result.iterations} 次
+                {!result.withinTargetPages && '（内容过多，已使用最小字号仍无法压至目标页数）'}
+              </div>
             </div>
           </div>
+          {result.jobId && (
+            <div style={{ padding: '0 16px 12px' }}>
+              <a
+                href={`/api/download/${result.jobId}/pdf`}
+                download
+                style={{
+                  display: 'inline-block',
+                  padding: '6px 14px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#fff',
+                  background: 'var(--color-primary)',
+                  borderRadius: 6,
+                  textDecoration: 'none',
+                }}
+              >
+                ⬇ 下载 PDF
+              </a>
+            </div>
+          )}
         </div>
       )}
 
