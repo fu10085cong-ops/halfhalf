@@ -128,6 +128,11 @@ blockquote {
 
 .hh-mermaid svg {
   max-width: var(--content-width);
+  /* 图表内部节点越多，Mermaid 自动布局出的原始高度可能越夸张；
+     图表只按宽度收缩之前不会限制高度，节点一多就可能单张图占掉将近一整页。
+     这里额外按内容区高度的比例封顶，宽高谁更紧张就按谁收缩（等比缩放，不会变形）。 */
+  max-height: calc(var(--content-height) * 0.7);
+  width: auto;
   height: auto;
 }
 
