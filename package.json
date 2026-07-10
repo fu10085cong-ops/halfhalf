@@ -17,5 +17,8 @@
     "overrides": {
       "katex": "^0.16.11"
     }
+  },
+  "dependencies": {
+    "concurrently": "^10.0.3"
   }
 }
