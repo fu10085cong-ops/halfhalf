@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { PaperSize, Density } from '../../types';
 
 interface ParameterPanelProps {
@@ -61,6 +62,31 @@ export default function ParameterPanel({
   onOptimize,
   isOptimizing,
 }: ParameterPanelProps) {
+  const [inputValue, setInputValue] = useState(String(targetPages));
+
+  useEffect(() => {
+    setInputValue(String(targetPages));
+  }, [targetPages]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setInputValue(raw);
+    if (raw !== '') {
+      const num = parseInt(raw, 10);
+      if (!isNaN(num)) {
+        onTargetPagesChange(Math.max(1, Math.min(100, num)));
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    const num = parseInt(inputValue, 10);
+    if (inputValue === '' || isNaN(num) || num < 1) {
+      setInputValue('1');
+      onTargetPagesChange(1);
+    }
+  };
+
   return (
     <>
       {/* 参数设置 */}
@@ -75,8 +101,9 @@ export default function ParameterPanel({
             type="number"
             min={1}
             max={100}
-            value={targetPages}
-            onChange={(e) => onTargetPagesChange(Math.max(1, parseInt(e.target.value) || 1))}
+            value={inputValue}
+            onChange={handleChange}
+            onBlur={handleBlur}
             style={fieldStyle}
           />
         </div>
