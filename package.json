@@ -9,6 +9,9 @@
     "lint": "pnpm --filter '*' lint",
     "clean": "pnpm --filter '*' clean"
   },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=9.0.0"

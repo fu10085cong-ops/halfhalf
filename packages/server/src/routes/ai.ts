@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { AiProxyRequest, ApiErrorResponse } from '../types/index.js';
 
 export const aiRouter = Router();
 
@@ -12,12 +13,6 @@ const ALLOWED_HOSTS = new Set([
   'generativelanguage.googleapis.com',
 ]);
 
-interface AiProxyRequest {
-  endpoint: string;
-  headers?: Record<string, string>;
-  body: unknown;
-}
-
 /**
  * POST /api/ai/proxy
  * 通用 BYOK AI 转发接口：不关心具体任务是"审核""精简"还是别的什么，
@@ -28,7 +23,8 @@ aiRouter.post('/ai/proxy', async (req: Request, res: Response) => {
   const { endpoint, headers, body } = req.body as AiProxyRequest;
 
   if (!endpoint || typeof endpoint !== 'string') {
-    res.status(400).json({ error: '缺少 endpoint 字段' });
+    const response: ApiErrorResponse = { error: '缺少 endpoint 字段' };
+    res.status(400).json(response);
     return;
   }
 
@@ -36,16 +32,19 @@ aiRouter.post('/ai/proxy', async (req: Request, res: Response) => {
   try {
     url = new URL(endpoint);
   } catch {
-    res.status(400).json({ error: 'endpoint 不是合法的 URL' });
+    const response: ApiErrorResponse = { error: 'endpoint 不是合法的 URL' };
+    res.status(400).json(response);
     return;
   }
 
   if (url.protocol !== 'https:') {
-    res.status(400).json({ error: '仅支持 https 端点' });
+    const response: ApiErrorResponse = { error: '仅支持 https 端点' };
+    res.status(400).json(response);
     return;
   }
   if (!ALLOWED_HOSTS.has(url.hostname)) {
-    res.status(400).json({ error: `不支持的服务商域名: ${url.hostname}` });
+    const response: ApiErrorResponse = { error: `不支持的服务商域名: ${url.hostname}` };
+    res.status(400).json(response);
     return;
   }
 
@@ -67,6 +66,7 @@ aiRouter.post('/ai/proxy', async (req: Request, res: Response) => {
     res.send(text);
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误';
-    res.status(502).json({ error: `转发失败: ${message}` });
+    const response: ApiErrorResponse = { error: `转发失败: ${message}` };
+    res.status(502).json(response);
   }
 });

@@ -88,7 +88,7 @@ function hello() {
             } else if (eventType === 'result') {
               setResult(data);
             } else if (eventType === 'error') {
-              setError(data.message);
+              setError(data.error);
             }
           }
         }

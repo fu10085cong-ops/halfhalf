@@ -122,71 +122,18 @@ halfhalf/
 
 ## 🔧 API 接口
 
-### `POST /api/optimize`（SSE 流式）
+完整的接口契约（请求/响应字段、校验规则、错误形状、SSE 事件、示例）见
+[`packages/server/API.md`](./packages/server/API.md)——那份文档是给前端集成用的权威参考，这里只列一个速查表：
 
-请求：
+| 接口 | 说明 |
+|------|------|
+| `POST /api/optimize` | 核心接口，SSE 流式返回二分搜索过程和最终结果（含下载用的 `jobId`） |
+| `POST /api/render` | 尚未实现，占位返回 501 |
+| `GET /api/download/:jobId/pdf` | 下载最终 PDF，任务内存保留 30 分钟 |
+| `GET /api/download/:jobId/docx` | 尚未实现，占位返回 501，预留给 Pandoc |
+| `POST /api/ai/proxy` | 通用 BYOK AI 转发接口，域名白名单校验后原样转发 |
 
-```json
-{
-  "markdown": "# Hello\n\nWorld",
-  "targetPages": 5,
-  "paperSize": "A4",
-  "density": "normal",
-  "margins": { "top": 10, "bottom": 10, "left": 10, "right": 10 },
-  "precision": 0.5,
-  "cleanup": false
-}
-```
-
-`cleanup` 为 `true` 时会在排版前跑一遍确定性格式清理（见下方「格式清理」），默认 `false`，不改动原文。
-
-SSE 事件流：
-
-```
-event: progress
-data: {"fontSize":12,"pages":7,"withinLimit":false,"timestamp":1234567890}
-
-event: progress
-data: {"fontSize":9,"pages":4,"withinLimit":true,"timestamp":1234567891}
-
-event: result
-data: {
-  "optimalFontSize": 10.5,
-  "actualPages": 5,
-  "iterations": 8,
-  "history": [...],
-  "withinTargetPages": true,
-  "jobId": "b3f1..."
-}
-```
-
-`withinTargetPages` 为 `false` 时表示内容过多，最小字号（6pt）下仍超过目标页数——此时返回的是最小字号下的最佳努力结果，而不是报错。
-
-### `POST /api/render`
-
-使用指定字号渲染单次 PDF 预览（不参与搜索）。**尚未实现**（占位端点）。
-
-### `GET /api/download/:jobId/pdf`
-
-下载最终 PDF 文件，`jobId` 来自 `/api/optimize` 返回结果。任务在内存中保留 30 分钟，过期或服务重启后失效。
-
-### `GET /api/download/:jobId/docx`
-
-DOCX 导出。**尚未实现**（占位端点，预留给 Pandoc 集成）。
-
-### `POST /api/ai/proxy`
-
-BYOK 通用 AI 转发接口，不绑定具体任务（审核/精简/排版建议等由调用方自行决定 prompt 内容），
-后端只做域名白名单校验（`api.openai.com` / `api.anthropic.com` / `generativelanguage.googleapis.com`）和原样转发，
-不记录、不存储传入的 key。
-
-```json
-{
-  "endpoint": "https://api.openai.com/v1/chat/completions",
-  "headers": { "Authorization": "Bearer sk-xxx" },
-  "body": { "model": "gpt-4o-mini", "messages": [] }
-}
-```
+所有接口的错误响应统一是 `{ "error": string }` 形状，包括 SSE 里的 `error` 事件。
 
 ---
 

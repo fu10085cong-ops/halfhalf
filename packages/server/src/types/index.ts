@@ -73,3 +73,21 @@ export const SEARCH_CONFIG = {
   defaultPrecision: 0.5,
   maxIterations: 20,
 } as const;
+
+/**
+ * 所有接口统一的错误响应形状——不管是普通 HTTP 4xx/5xx 的 JSON body，
+ * 还是 SSE 里的 error 事件 data，字段名都是 `error`，前端只需要认一种形状。
+ */
+export interface ApiErrorResponse {
+  error: string;
+}
+
+/** POST /api/ai/proxy 的请求体形状 */
+export interface AiProxyRequest {
+  /** 目标 AI 服务商的完整 API 地址，必须是 https 且域名在白名单内 */
+  endpoint: string;
+  /** 会与 Content-Type: application/json 合并后转发给上游，用来放 Authorization 等认证头 */
+  headers?: Record<string, string>;
+  /** 原样 JSON.stringify 后作为请求体转发给上游，具体形状由目标服务商的 API 决定 */
+  body: unknown;
+}
