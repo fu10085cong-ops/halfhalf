@@ -50,6 +50,7 @@ interface OptimizeRequest {
   density?: 'compact' | 'normal' | 'loose';  // 默认 'normal'
   precision?: number;         // 字号搜索精度，单位 pt，默认 0.5，必须 > 0
   cleanup?: boolean;          // 是否在排版前跑确定性格式清理，默认 false（不改动原文）
+  orientation?: 'portrait' | 'landscape' | 'auto';  // 纸张方向，默认 'portrait'
 }
 ```
 
@@ -63,6 +64,12 @@ interface OptimizeRequest {
 | `density` | 传了就必须是 `compact`/`normal`/`loose` 之一 |
 | `precision` | 传了就必须是 > 0 的数字 |
 | `margins` | 传了的话，`top`/`bottom`/`left`/`right` 都必须是 >= 0 的数字 |
+| `orientation` | 传了就必须是 `portrait`/`landscape`/`auto` 之一 |
+
+`orientation` 说明：
+- `portrait`（默认）：竖版，跟历史行为一致，只跑一轮搜索
+- `landscape`：横版，纸张宽高对调（页边距不跟着转，仍然按 top/bottom/left/right 挂在物理边上），只跑一轮搜索
+- `auto`：并行跑竖版和横版两轮完整搜索，取 `optimalFontSize` 更大的结果返回。总耗时接近单轮（两轮并行），但会同时占用两个 Chromium 实例的内存/CPU——多人并发场景下慎用，等浏览器实例池做完之前不建议做成默认值
 
 请求示例：
 
@@ -74,7 +81,8 @@ interface OptimizeRequest {
   "density": "compact",
   "margins": { "top": 8, "bottom": 8, "left": 8, "right": 8 },
   "precision": 0.5,
-  "cleanup": true
+  "cleanup": true,
+  "orientation": "auto"
 }
 ```
 
@@ -91,13 +99,17 @@ interface IterationRecord {
   pages: number;         // 本轮渲染出的实际页数
   withinLimit: boolean;  // 本轮页数是否 <= targetPages
   timestamp: number;
+  orientation: 'portrait' | 'landscape';  // 本轮测试的纸张方向；只有 orientation='auto' 时才会同时出现两种
 }
 ```
 
 ```
 event: progress
-data: {"fontSize":12,"pages":7,"withinLimit":false,"timestamp":1234567890}
+data: {"fontSize":12,"pages":7,"withinLimit":false,"timestamp":1234567890,"orientation":"portrait"}
 ```
+
+`orientation='auto'` 时，两个方向的搜索并行进行，`progress` 事件会交替出现 `portrait`/`landscape`，
+前端如果要分开展示两条进度，用 `orientation` 字段分组即可。
 
 #### `event: result`（成功时，最后一个事件）
 
@@ -109,12 +121,13 @@ interface OptimizeResult {
   history: IterationRecord[];      // 完整的迭代记录，和收到的 progress 事件是同一份数据
   withinTargetPages: boolean;      // false 表示内容过多，最小字号仍超页，返回的是最佳努力结果
   jobId: string;                   // 用于 /api/download/:jobId/pdf 下载对应的 PDF
+  orientation: 'portrait' | 'landscape';  // 最终采用的方向；orientation='auto' 时是搜索结果字号更大的那个
 }
 ```
 
 ```
 event: result
-data: {"optimalFontSize":10.5,"actualPages":2,"iterations":6,"history":[...],"withinTargetPages":true,"jobId":"b3f1c2..."}
+data: {"optimalFontSize":10.5,"actualPages":2,"iterations":6,"history":[...],"withinTargetPages":true,"jobId":"b3f1c2...","orientation":"portrait"}
 ```
 
 #### `event: error`（失败时，最后一个事件）
@@ -161,14 +174,54 @@ while (true) {
 
 ## `POST /api/render`
 
-**尚未实现**，当前恒定返回：
+单次渲染 PDF 预览，**不参与二分搜索**——用户指定一个确定的字号（而不是目标页数），直接渲染一次。
+典型用途：用户切换纸张方向（横版/竖版）或调整字号之后，想先看一眼效果，再决定要不要跑完整的
+`/api/optimize`。
 
-```
-HTTP 501
-{ "error": "/api/render 尚未实现" }
+### 请求 body
+
+```ts
+interface RenderPreviewRequest {
+  markdown: string;                      // 必填，非空
+  fontSize: number;                      // 必填，必须落在 6~24（SEARCH_CONFIG 的范围）之间
+  paperSize?: 'A4' | 'A5' | 'Letter';    // 默认 'A4'
+  margins?: { top: number; bottom: number; left: number; right: number };
+  density?: 'compact' | 'normal' | 'loose';  // 默认 'normal'
+  orientation?: 'portrait' | 'landscape';    // 默认 'portrait'；**不支持 'auto'**（单次预览没有"取更优方向"这个概念，orientation 必须由用户自己选定）
+  cleanup?: boolean;                     // 默认 false
+}
 ```
 
-设计意图是"用指定字号单次渲染 PDF 预览，不参与二分搜索"，接口形状还没最终定，先不要在前端接入。
+**校验规则**：跟 `/api/optimize` 基本一致，区别是没有 `targetPages`/`precision`，多了必填的
+`fontSize`（必须是 6~24 之间的数字）；`orientation` 传 `auto` 会被拒绝，返回 `400`。
+
+### 响应
+
+**成功**：`200`，直接返回 PDF 二进制流：
+
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline`（不是 `attachment`，适合前端用 `<iframe>`/`<embed>` 直接内嵌预览，而不是触发下载）
+- `X-Page-Count`：本次渲染的实际页数，放在响应头里，不需要解析 PDF 内容就能拿到
+
+**失败**：`400`（参数校验不通过）或 `500`（渲染过程出错）+ `ApiErrorResponse`。
+
+### 前端典型用法
+
+```ts
+const response = await fetch('/api/render', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ markdown, fontSize: 12, orientation: 'landscape' }),
+});
+
+const pageCount = response.headers.get('X-Page-Count');
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+// <iframe src={url} /> 或 <embed src={url} type="application/pdf" />
+```
+
+这个接口不会创建 `jobId`、不会写入 job-store——纯粹是"渲染一次给你看"，预览满意之后要走
+`/api/optimize` 正式生成可下载的最终结果。
 
 ---
 

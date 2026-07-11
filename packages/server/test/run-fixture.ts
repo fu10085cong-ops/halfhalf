@@ -4,28 +4,32 @@
  *
  * 用法：
  *   cd packages/server
- *   npx tsx test/run-fixture.ts [targetPages] [文件名（相对 fixtures/ 目录）]
+ *   npx tsx test/run-fixture.ts [targetPages] [文件名（相对 fixtures/ 目录）] [orientation]
  *
  * 示例：
- *   npx tsx test/run-fixture.ts 2                      # 默认跑 fixtures/sample.md，目标 2 页
- *   npx tsx test/run-fixture.ts 2 random-topic.md       # 跑 fixtures/random-topic.md，目标 2 页
+ *   npx tsx test/run-fixture.ts 2                              # 默认跑 fixtures/sample.md，目标 2 页，竖版
+ *   npx tsx test/run-fixture.ts 2 random-topic.md               # 跑 fixtures/random-topic.md，目标 2 页
+ *   npx tsx test/run-fixture.ts 2 random-topic.md landscape     # 横版
+ *   npx tsx test/run-fixture.ts 2 random-topic.md auto          # 竖版/横版都试，取字号更大的
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { searchOptimalFontSize } from '../src/engine/binary-search.js';
-import { DEFAULT_MARGINS } from '../src/types/index.js';
+import { DEFAULT_MARGINS, type Orientation } from '../src/types/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function main() {
   const targetPages = Number(process.argv[2] || 2);
   const fileName = process.argv[3] || 'sample.md';
+  const orientation = (process.argv[4] || 'portrait') as Orientation;
   const fixturePath = path.join(__dirname, 'fixtures', fileName);
   const markdown = readFileSync(fixturePath, 'utf-8');
 
   console.log(`[run-fixture] 输入文件: ${fileName}`);
   console.log(`[run-fixture] 目标页数: ${targetPages}`);
+  console.log(`[run-fixture] 纸张方向: ${orientation}`);
   console.log('[run-fixture] 开始二分搜索...');
 
   const outcome = await searchOptimalFontSize(
@@ -36,10 +40,11 @@ async function main() {
       margins: DEFAULT_MARGINS,
       density: 'normal',
       precision: 0.5,
+      orientation,
     },
     (record) => {
       console.log(
-        `  迭代: fontSize=${record.fontSize}pt pages=${record.pages} withinLimit=${record.withinLimit}`
+        `  迭代[${record.orientation}]: fontSize=${record.fontSize}pt pages=${record.pages} withinLimit=${record.withinLimit}`
       );
     }
   );
@@ -50,6 +55,7 @@ async function main() {
 
   console.log('[run-fixture] 完成');
   console.log(`  最佳字号: ${outcome.optimalFontSize}pt`);
+  console.log(`  最终方向: ${outcome.orientation}`);
   console.log(`  实际页数: ${outcome.actualPages}`);
   console.log(`  是否达标: ${outcome.actualPages <= targetPages}`);
   console.log(`  迭代次数: ${outcome.iterations}`);

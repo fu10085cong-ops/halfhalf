@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
-import type { Density, Margins, PaperSize } from '../types/index.js';
+import type { Density, Margins, PaperSize, ResolvedOrientation } from '../types/index.js';
 import { PAPER_SIZES, DENSITY_CONFIG } from '../types/index.js';
 
 const require = createRequire(import.meta.url);
@@ -44,6 +44,15 @@ export interface RenderParams {
   paperSize: PaperSize;
   margins: Margins;
   density: Density;
+  orientation: ResolvedOrientation;
+}
+
+/** 横版就是把纸张宽高对调，页边距仍然按 top/bottom/left/right 挂在物理边上，不跟着旋转 */
+function getPaperDimensionsMm(paperSize: PaperSize, orientation: ResolvedOrientation) {
+  const paper = PAPER_SIZES[paperSize];
+  return orientation === 'landscape'
+    ? { width: paper.height, height: paper.width }
+    : { width: paper.width, height: paper.height };
 }
 
 export interface RenderContext {
@@ -63,7 +72,7 @@ export async function createRenderContext(
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  const paper = PAPER_SIZES[params.paperSize];
+  const paper = getPaperDimensionsMm(params.paperSize, params.orientation);
   const contentWidthMm = paper.width - params.margins.left - params.margins.right;
   const contentHeightMm = paper.height - params.margins.top - params.margins.bottom;
 
@@ -171,7 +180,7 @@ export async function renderPdfAndCountPages(
   ctx: RenderContext,
   params: RenderParams
 ): Promise<{ pdfBuffer: Buffer; pageCount: number }> {
-  const paper = PAPER_SIZES[params.paperSize];
+  const paper = getPaperDimensionsMm(params.paperSize, params.orientation);
   const pdfBuffer = await ctx.page.pdf({
     width: `${paper.width}mm`,
     height: `${paper.height}mm`,

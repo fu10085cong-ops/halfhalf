@@ -4,6 +4,12 @@ export type PaperSize = 'A4' | 'A5' | 'Letter';
 /** 排版密度 */
 export type Density = 'compact' | 'normal' | 'loose';
 
+/** 纸张方向。'auto' 会并行试竖版和横版两轮完整搜索，取字号更大的结果——总耗时不明显增加，但峰值内存/CPU 占用接近翻倍（两个 Chromium 实例同时跑） */
+export type Orientation = 'portrait' | 'landscape' | 'auto';
+
+/** 单次搜索实际采用的纸张方向（'auto' 只是请求参数，落到具体某一轮搜索时一定是这两者之一） */
+export type ResolvedOrientation = 'portrait' | 'landscape';
+
 /** 页边距（单位 mm） */
 export interface Margins {
   top: number;
@@ -22,6 +28,8 @@ export interface OptimizeRequest {
   precision?: number;
   /** 是否在排版前跑一遍确定性的格式清理（空行折叠、代码语言标注归一化等），默认不开启 */
   cleanup?: boolean;
+  /** 纸张方向，默认 'portrait'（竖版，跟历史行为一致，不额外增加耗时） */
+  orientation?: Orientation;
 }
 
 /** 单次迭代记录 */
@@ -30,6 +38,8 @@ export interface IterationRecord {
   pages: number;
   withinLimit: boolean;
   timestamp: number;
+  /** 本轮迭代测试的纸张方向；只有 orientation='auto' 时才会同时出现 portrait 和 landscape 的记录 */
+  orientation: ResolvedOrientation;
 }
 
 /** 优化结果 */
@@ -42,6 +52,24 @@ export interface OptimizeResult {
   withinTargetPages: boolean;
   /** 用于下载最终 PDF 的任务 ID */
   jobId: string;
+  /** 最终采用的纸张方向；orientation='auto' 时是搜索结果字号更大的那一个 */
+  orientation: ResolvedOrientation;
+}
+
+/**
+ * POST /api/render 的请求体——单次渲染预览，不参与二分搜索，用于让用户在跑完整优化前
+ * 先看一眼某个字号/方向组合下的排版效果（比如切换横竖版之后想先预览再决定）。
+ */
+export interface RenderPreviewRequest {
+  markdown: string;
+  /** 必填，预览用的字号（pt），必须落在 SEARCH_CONFIG.minFontSize~maxFontSize 区间内 */
+  fontSize: number;
+  paperSize?: PaperSize;
+  margins?: Margins;
+  density?: Density;
+  /** 默认 'portrait'；预览接口不支持 'auto'（auto 是搜索两个方向取最优，单次预览没有"取最优"这个概念） */
+  orientation?: ResolvedOrientation;
+  cleanup?: boolean;
 }
 
 /** 纸张尺寸预设 */
