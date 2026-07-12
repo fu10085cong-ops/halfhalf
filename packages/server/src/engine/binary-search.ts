@@ -1,4 +1,5 @@
 import type {
+  Columns,
   Density,
   IterationRecord,
   Margins,
@@ -9,10 +10,12 @@ import type {
 import { SEARCH_CONFIG } from '../types/index.js';
 import { markdownToHtml } from './md-to-html.js';
 import {
+  applyColumns,
   applyTypography,
   closeRenderContext,
   createRenderContext,
   renderPdfAndCountPages,
+  type RenderContext,
 } from './render-pdf.js';
 
 export interface SearchParams {
@@ -24,6 +27,8 @@ export interface SearchParams {
   precision: number;
   /** 'auto' 会并行跑竖版和横版两轮完整搜索，取字号更大的结果 */
   orientation: Orientation;
+  /** 'auto' 会在 1~maxAutoColumns 之间逐个试栏数，取字号更大的结果 */
+  columns: Columns;
 }
 
 export interface SearchOutcome {
@@ -33,84 +38,144 @@ export interface SearchOutcome {
   history: IterationRecord[];
   pdfBuffer: Buffer;
   orientation: ResolvedOrientation;
+  columns: number;
+}
+
+/** 择优标准：字号大者优先；字号相同取页数少的；再相同取栏数少的（更简单/易读）；再相同取竖版 */
+interface Ranked {
+  fontSize: number;
+  pages: number;
+  columns: number;
+  orientation: ResolvedOrientation;
+}
+function firstIsBetter(a: Ranked, b: Ranked): boolean {
+  if (a.fontSize !== b.fontSize) return a.fontSize > b.fontSize;
+  if (a.pages !== b.pages) return a.pages < b.pages;
+  if (a.columns !== b.columns) return a.columns < b.columns;
+  return a.orientation === 'portrait';
 }
 
 /**
- * 单一纸张方向下，在 [minFontSize, maxFontSize] 区间二分搜索满足「页数 <= targetPages」的最大字号。
- * Mermaid 图表只在渲染上下文建立时预渲染一次，后续每轮迭代只调整 CSS 变量并重新打印，
- * 不重新加载页面、不重跑图表渲染。
+ * 在给定纸张方向 + 栏数下，二分搜索满足「页数 <= targetPages」的最大字号。
+ * 复用外部传入的渲染上下文（不重开浏览器、不重跑 Mermaid），只调整字号 CSS 变量后重新打印。
+ */
+async function binarySearchFontSize(
+  ctx: RenderContext,
+  params: SearchParams,
+  orientation: ResolvedOrientation,
+  columns: number,
+  onProgress?: (record: IterationRecord) => void
+): Promise<{ fontSize: number; pages: number; pdfBuffer: Buffer; iterations: number; history: IterationRecord[] }> {
+  const renderParams = {
+    paperSize: params.paperSize,
+    margins: params.margins,
+    density: params.density,
+    orientation,
+    columns,
+  };
+
+  const history: IterationRecord[] = [];
+  let iterations = 0;
+  let lo = SEARCH_CONFIG.minFontSize;
+  let hi = SEARCH_CONFIG.maxFontSize;
+
+  const probe = async (fontSize: number) => {
+    await applyTypography(ctx, fontSize, params.density);
+    const { pdfBuffer, pageCount } = await renderPdfAndCountPages(ctx, renderParams);
+    iterations++;
+    const record: IterationRecord = {
+      fontSize,
+      pages: pageCount,
+      withinLimit: pageCount <= params.targetPages,
+      timestamp: Date.now(),
+      orientation,
+      columns,
+    };
+    history.push(record);
+    onProgress?.(record);
+    return { pdfBuffer, pageCount };
+  };
+
+  // 先探测下限：如果最小字号仍然超页，说明内容过多，直接返回该最佳努力结果
+  const lowProbe = await probe(lo);
+  let best = { fontSize: lo, pages: lowProbe.pageCount, pdfBuffer: lowProbe.pdfBuffer };
+
+  if (lowProbe.pageCount <= params.targetPages) {
+    while (hi - lo > params.precision && iterations < SEARCH_CONFIG.maxIterations) {
+      const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐到 0.5pt 网格
+      const p = await probe(mid);
+      if (p.pageCount <= params.targetPages) {
+        best = { fontSize: mid, pages: p.pageCount, pdfBuffer: p.pdfBuffer };
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+  }
+
+  return { ...best, iterations, history };
+}
+
+/** 把 columns 请求参数解析成要实际尝试的栏数列表 */
+function resolveColumnCandidates(columns: Columns): number[] {
+  if (columns === 'auto') {
+    return Array.from({ length: SEARCH_CONFIG.maxAutoColumns }, (_, i) => i + 1);
+  }
+  return [Math.max(1, Math.floor(columns))];
+}
+
+/**
+ * 单一纸张方向下的搜索：建立一个渲染上下文，在其中逐个尝试候选栏数
+ * （每个栏数只改一个 CSS 变量，不重开浏览器、不重跑 Mermaid），取字号最大的栏数为结果。
  */
 async function searchForOrientation(
-  params: SearchParams & { orientation: ResolvedOrientation },
+  params: SearchParams,
+  orientation: ResolvedOrientation,
   onProgress?: (record: IterationRecord) => void
 ): Promise<SearchOutcome> {
   const { html } = await markdownToHtml(params.markdown);
+  const columnCandidates = resolveColumnCandidates(params.columns);
   const ctx = await createRenderContext(html, {
     paperSize: params.paperSize,
     margins: params.margins,
     density: params.density,
-    orientation: params.orientation,
+    orientation,
+    columns: columnCandidates[0],
   });
 
-  const history: IterationRecord[] = [];
-  let iterations = 0;
+  const allHistory: IterationRecord[] = [];
+  let totalIterations = 0;
+  let best: { fontSize: number; pages: number; pdfBuffer: Buffer; columns: number } | null = null;
 
   try {
-    let lo = SEARCH_CONFIG.minFontSize;
-    let hi = SEARCH_CONFIG.maxFontSize;
+    for (const cols of columnCandidates) {
+      await applyColumns(ctx, cols);
+      const r = await binarySearchFontSize(ctx, params, orientation, cols, onProgress);
+      totalIterations += r.iterations;
+      allHistory.push(...r.history);
 
-    // 先探测下限：如果最小字号仍然超页，说明内容过多，直接返回该最佳努力结果
-    await applyTypography(ctx, lo, params.density);
-    const lowProbe = await renderPdfAndCountPages(ctx, params);
-    iterations++;
-
-    const lowRecord: IterationRecord = {
-      fontSize: lo,
-      pages: lowProbe.pageCount,
-      withinLimit: lowProbe.pageCount <= params.targetPages,
-      timestamp: Date.now(),
-      orientation: params.orientation,
-    };
-    history.push(lowRecord);
-    onProgress?.(lowRecord);
-
-    let best = { fontSize: lo, pages: lowProbe.pageCount, pdfBuffer: lowProbe.pdfBuffer };
-
-    if (lowProbe.pageCount <= params.targetPages) {
-      while (hi - lo > params.precision && iterations < SEARCH_CONFIG.maxIterations) {
-        const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐到 0.5pt 网格
-
-        await applyTypography(ctx, mid, params.density);
-        const probe = await renderPdfAndCountPages(ctx, params);
-        iterations++;
-
-        const withinLimit = probe.pageCount <= params.targetPages;
-        const record: IterationRecord = {
-          fontSize: mid,
-          pages: probe.pageCount,
-          withinLimit,
-          timestamp: Date.now(),
-          orientation: params.orientation,
-        };
-        history.push(record);
-        onProgress?.(record);
-
-        if (withinLimit) {
-          best = { fontSize: mid, pages: probe.pageCount, pdfBuffer: probe.pdfBuffer };
-          lo = mid;
-        } else {
-          hi = mid;
-        }
+      const candidate = { fontSize: r.fontSize, pages: r.pages, pdfBuffer: r.pdfBuffer, columns: cols };
+      if (
+        best === null ||
+        firstIsBetter(
+          { ...candidate, orientation },
+          { fontSize: best.fontSize, pages: best.pages, columns: best.columns, orientation }
+        )
+      ) {
+        best = candidate;
       }
     }
 
+    // columnCandidates 至少有一个元素，循环后 best 一定非空
+    const chosen = best!;
     return {
-      optimalFontSize: best.fontSize,
-      actualPages: best.pages,
-      iterations,
-      history,
-      pdfBuffer: best.pdfBuffer,
-      orientation: params.orientation,
+      optimalFontSize: chosen.fontSize,
+      actualPages: chosen.pages,
+      iterations: totalIterations,
+      history: allHistory,
+      pdfBuffer: chosen.pdfBuffer,
+      orientation,
+      columns: chosen.columns,
     };
   } finally {
     await closeRenderContext(ctx);
@@ -118,33 +183,39 @@ async function searchForOrientation(
 }
 
 /**
- * 对外入口。orientation 为 'portrait'/'landscape' 时只跑一轮单方向搜索（跟历史行为一致，
- * 不额外增加耗时）；为 'auto' 时并行跑两轮（竖版 + 横版），总耗时接近单轮，但会同时占用两个
- * Chromium 实例的内存/CPU。取 optimalFontSize 更大的结果——字号相同时优先选页数更少的，
- * 再相同则优先竖版（约定俗成的默认阅读方向）。
+ * 对外入口。方向和栏数都可以是固定值或 'auto'：
+ * - orientation 固定 + columns 固定 → 一个渲染上下文，一轮二分搜索
+ * - columns='auto' → 同一上下文内逐个试栏数（切栏数只改 CSS，不重开浏览器）
+ * - orientation='auto' → 并行开两个上下文（竖/横），各自内部再按 columns 处理，最后择优
+ * 择优标准：字号大者优先，其次页数少、栏数少、竖版。
  */
 export async function searchOptimalFontSize(
   params: SearchParams,
   onProgress?: (record: IterationRecord) => void
 ): Promise<SearchOutcome> {
   if (params.orientation !== 'auto') {
-    return searchForOrientation({ ...params, orientation: params.orientation }, onProgress);
+    return searchForOrientation(params, params.orientation, onProgress);
   }
 
   const [portraitResult, landscapeResult] = await Promise.all([
-    searchForOrientation({ ...params, orientation: 'portrait' }, onProgress),
-    searchForOrientation({ ...params, orientation: 'landscape' }, onProgress),
+    searchForOrientation(params, 'portrait', onProgress),
+    searchForOrientation(params, 'landscape', onProgress),
   ]);
 
-  if (portraitResult.optimalFontSize !== landscapeResult.optimalFontSize) {
-    return portraitResult.optimalFontSize > landscapeResult.optimalFontSize
-      ? portraitResult
-      : landscapeResult;
-  }
-  if (portraitResult.actualPages !== landscapeResult.actualPages) {
-    return portraitResult.actualPages < landscapeResult.actualPages
-      ? portraitResult
-      : landscapeResult;
-  }
-  return portraitResult;
+  return firstIsBetter(
+    {
+      fontSize: portraitResult.optimalFontSize,
+      pages: portraitResult.actualPages,
+      columns: portraitResult.columns,
+      orientation: 'portrait',
+    },
+    {
+      fontSize: landscapeResult.optimalFontSize,
+      pages: landscapeResult.actualPages,
+      columns: landscapeResult.columns,
+      orientation: 'landscape',
+    }
+  )
+    ? portraitResult
+    : landscapeResult;
 }

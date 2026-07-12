@@ -51,6 +51,7 @@ interface OptimizeRequest {
   precision?: number;         // 字号搜索精度，单位 pt，默认 0.5，必须 > 0
   cleanup?: boolean;          // 是否在排版前跑确定性格式清理，默认 false（不改动原文）
   orientation?: 'portrait' | 'landscape' | 'auto';  // 纸张方向，默认 'portrait'
+  columns?: number | 'auto';  // 分栏数，默认 1（单栏）
 }
 ```
 
@@ -65,11 +66,17 @@ interface OptimizeRequest {
 | `precision` | 传了就必须是 > 0 的数字 |
 | `margins` | 传了的话，`top`/`bottom`/`left`/`right` 都必须是 >= 0 的数字 |
 | `orientation` | 传了就必须是 `portrait`/`landscape`/`auto` 之一 |
+| `columns` | 传了就必须是 `'auto'` 或 1~12 的整数 |
 
 `orientation` 说明：
 - `portrait`（默认）：竖版，跟历史行为一致，只跑一轮搜索
 - `landscape`：横版，纸张宽高对调（页边距不跟着转，仍然按 top/bottom/left/right 挂在物理边上），只跑一轮搜索
 - `auto`：并行跑竖版和横版两轮完整搜索，取 `optimalFontSize` 更大的结果返回。总耗时接近单轮（两轮并行），但会同时占用两个 Chromium 实例的内存/CPU——多人并发场景下慎用，等浏览器实例池做完之前不建议做成默认值
+
+`columns` 说明：
+- 具体数字（默认 `1`）：固定栏数。多栏时正文/代码/公式/图片会在栏内自然流动、跟文字穿插；宽表格会通栏（占满整行宽度）避免被挤进窄栏。
+- `'auto'`：引擎在 1~4 栏之间逐个尝试，取能撑出最大字号的栏数。切换栏数只改一个 CSS 变量、复用同一个浏览器上下文，**不会**成倍增加浏览器实例；但渲染次数会随候选栏数增加，耗时相应变长。
+- `orientation` 和 `columns` 可以同时为 `'auto'`——此时会在「方向 × 栏数」的组合里全局择优（字号最大者优先，其次页数少、栏数少、竖版）。
 
 请求示例：
 
@@ -82,7 +89,8 @@ interface OptimizeRequest {
   "margins": { "top": 8, "bottom": 8, "left": 8, "right": 8 },
   "precision": 0.5,
   "cleanup": true,
-  "orientation": "auto"
+  "orientation": "auto",
+  "columns": "auto"
 }
 ```
 
@@ -100,12 +108,13 @@ interface IterationRecord {
   withinLimit: boolean;  // 本轮页数是否 <= targetPages
   timestamp: number;
   orientation: 'portrait' | 'landscape';  // 本轮测试的纸张方向；只有 orientation='auto' 时才会同时出现两种
+  columns: number;                          // 本轮测试的分栏数；columns='auto' 时不同轮次会出现不同栏数
 }
 ```
 
 ```
 event: progress
-data: {"fontSize":12,"pages":7,"withinLimit":false,"timestamp":1234567890,"orientation":"portrait"}
+data: {"fontSize":12,"pages":7,"withinLimit":false,"timestamp":1234567890,"orientation":"portrait","columns":2}
 ```
 
 `orientation='auto'` 时，两个方向的搜索并行进行，`progress` 事件会交替出现 `portrait`/`landscape`，
@@ -122,6 +131,7 @@ interface OptimizeResult {
   withinTargetPages: boolean;      // false 表示内容过多，最小字号仍超页，返回的是最佳努力结果
   jobId: string;                   // 用于 /api/download/:jobId/pdf 下载对应的 PDF
   orientation: 'portrait' | 'landscape';  // 最终采用的方向；orientation='auto' 时是搜索结果字号更大的那个
+  columns: number;                          // 最终采用的分栏数；columns='auto' 时是搜索结果字号更大的那个栏数
 }
 ```
 
@@ -188,12 +198,13 @@ interface RenderPreviewRequest {
   margins?: { top: number; bottom: number; left: number; right: number };
   density?: 'compact' | 'normal' | 'loose';  // 默认 'normal'
   orientation?: 'portrait' | 'landscape';    // 默认 'portrait'；**不支持 'auto'**（单次预览没有"取更优方向"这个概念，orientation 必须由用户自己选定）
+  columns?: number;                      // 默认 1；**不支持 'auto'**（同 orientation，预览必须给定具体栏数）
   cleanup?: boolean;                     // 默认 false
 }
 ```
 
 **校验规则**：跟 `/api/optimize` 基本一致，区别是没有 `targetPages`/`precision`，多了必填的
-`fontSize`（必须是 6~24 之间的数字）；`orientation` 传 `auto` 会被拒绝，返回 `400`。
+`fontSize`（必须是 6~24 之间的数字）；`orientation` 和 `columns` 传 `'auto'` 都会被拒绝，返回 `400`。
 
 ### 响应
 

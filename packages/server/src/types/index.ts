@@ -10,6 +10,13 @@ export type Orientation = 'portrait' | 'landscape' | 'auto';
 /** 单次搜索实际采用的纸张方向（'auto' 只是请求参数，落到具体某一轮搜索时一定是这两者之一） */
 export type ResolvedOrientation = 'portrait' | 'landscape';
 
+/**
+ * 分栏数。具体数字（1/2/3…）表示固定栏数；'auto' 表示让引擎在 1~maxAutoColumns 之间
+ * 自动挑能撑出最大字号的栏数。栏数和字号一样是 CSS 变量，切换栏数不需要重开浏览器，
+ * 所以 'auto' 只是在同一个渲染上下文里多跑几轮字号搜索，不会成倍增加浏览器实例。
+ */
+export type Columns = number | 'auto';
+
 /** 页边距（单位 mm） */
 export interface Margins {
   top: number;
@@ -30,6 +37,8 @@ export interface OptimizeRequest {
   cleanup?: boolean;
   /** 纸张方向，默认 'portrait'（竖版，跟历史行为一致，不额外增加耗时） */
   orientation?: Orientation;
+  /** 分栏数，默认 1（单栏，跟历史行为一致）。传具体数字固定栏数，传 'auto' 让引擎自动挑最优栏数 */
+  columns?: Columns;
 }
 
 /** 单次迭代记录 */
@@ -40,6 +49,8 @@ export interface IterationRecord {
   timestamp: number;
   /** 本轮迭代测试的纸张方向；只有 orientation='auto' 时才会同时出现 portrait 和 landscape 的记录 */
   orientation: ResolvedOrientation;
+  /** 本轮迭代测试的分栏数；columns='auto' 时不同轮次会出现不同的栏数 */
+  columns: number;
 }
 
 /** 优化结果 */
@@ -54,6 +65,8 @@ export interface OptimizeResult {
   jobId: string;
   /** 最终采用的纸张方向；orientation='auto' 时是搜索结果字号更大的那一个 */
   orientation: ResolvedOrientation;
+  /** 最终采用的分栏数；columns='auto' 时是搜索结果字号更大的那个栏数 */
+  columns: number;
 }
 
 /**
@@ -69,6 +82,8 @@ export interface RenderPreviewRequest {
   density?: Density;
   /** 默认 'portrait'；预览接口不支持 'auto'（auto 是搜索两个方向取最优，单次预览没有"取最优"这个概念） */
   orientation?: ResolvedOrientation;
+  /** 默认 1；预览接口只接受具体栏数，不支持 'auto'（同 orientation） */
+  columns?: number;
   cleanup?: boolean;
 }
 
@@ -100,6 +115,8 @@ export const SEARCH_CONFIG = {
   maxFontSize: 24,
   defaultPrecision: 0.5,
   maxIterations: 20,
+  /** columns='auto' 时尝试的最大栏数（从 1 试到这个值）。栏数太多每栏会窄到放不下内容，超过实际收益后停止 */
+  maxAutoColumns: 4,
 } as const;
 
 /**

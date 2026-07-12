@@ -25,6 +25,19 @@ const VALID_PAPER_SIZES = new Set(Object.keys(PAPER_SIZES));
 const VALID_DENSITIES = new Set(Object.keys(DENSITY_CONFIG));
 const VALID_ORIENTATIONS = new Set(['portrait', 'landscape', 'auto']);
 const VALID_PREVIEW_ORIENTATIONS = new Set(['portrait', 'landscape']);
+/** 显式指定固定栏数时的上限，防止传入荒谬的大值把每栏挤到没意义 */
+const MAX_EXPLICIT_COLUMNS = 12;
+
+/** 校验固定栏数（正整数且不超过上限）。返回错误信息或 null */
+function validateFixedColumns(columns: unknown): string | null {
+  if (typeof columns !== 'number' || !Number.isInteger(columns) || columns < 1) {
+    return 'columns 必须是 >= 1 的整数，或 "auto"';
+  }
+  if (columns > MAX_EXPLICIT_COLUMNS) {
+    return `columns 不能超过 ${MAX_EXPLICIT_COLUMNS}`;
+  }
+  return null;
+}
 
 /**
  * 校验 /api/optimize 的请求体，返回第一条校验失败的错误信息；全部通过则返回 null。
@@ -46,6 +59,11 @@ function validateOptimizeRequest(body: OptimizeRequest): string | null {
   }
   if (body.orientation !== undefined && !VALID_ORIENTATIONS.has(body.orientation)) {
     return `orientation 必须是 ${[...VALID_ORIENTATIONS].join('/')} 之一`;
+  }
+  // columns 可以是 'auto' 或固定的正整数
+  if (body.columns !== undefined && body.columns !== 'auto') {
+    const columnsError = validateFixedColumns(body.columns);
+    if (columnsError) return columnsError;
   }
   if (body.precision !== undefined && (typeof body.precision !== 'number' || body.precision <= 0)) {
     return 'precision 必须是大于 0 的数字';
@@ -86,6 +104,7 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
     precision: body.precision || SEARCH_CONFIG.defaultPrecision,
     cleanup: body.cleanup ?? false,
     orientation: body.orientation || 'portrait',
+    columns: body.columns ?? 1,
   };
 
   // SSE 响应头
@@ -114,6 +133,7 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
       withinTargetPages: outcome.actualPages <= params.targetPages,
       jobId,
       orientation: outcome.orientation,
+      columns: outcome.columns,
     };
 
     sendEvent('result', result);
@@ -152,6 +172,11 @@ function validateRenderRequest(body: RenderPreviewRequest): string | null {
   if (body.orientation !== undefined && !VALID_PREVIEW_ORIENTATIONS.has(body.orientation)) {
     return `orientation 必须是 ${[...VALID_PREVIEW_ORIENTATIONS].join('/')} 之一（预览接口不支持 auto）`;
   }
+  // 预览接口只接受固定栏数，不支持 'auto'（同 orientation，单次预览没有"取最优"的概念）
+  if (body.columns !== undefined) {
+    const columnsError = validateFixedColumns(body.columns);
+    if (columnsError) return columnsError;
+  }
   if (body.margins !== undefined) {
     const { top, bottom, left, right } = body.margins;
     const values = [top, bottom, left, right];
@@ -184,10 +209,11 @@ optimizeRouter.post('/render', async (req: Request, res: Response) => {
   const margins = { ...DEFAULT_MARGINS, ...body.margins };
   const density = body.density || 'normal';
   const orientation = body.orientation || 'portrait';
+  const columns = body.columns ?? 1;
 
   try {
     const { html } = await markdownToHtml(markdown);
-    const ctx = await createRenderContext(html, { paperSize, margins, density, orientation });
+    const ctx = await createRenderContext(html, { paperSize, margins, density, orientation, columns });
 
     try {
       await applyTypography(ctx, body.fontSize, density);
@@ -196,6 +222,7 @@ optimizeRouter.post('/render', async (req: Request, res: Response) => {
         margins,
         density,
         orientation,
+        columns,
       });
 
       res.setHeader('Content-Type', 'application/pdf');

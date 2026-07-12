@@ -19,6 +19,13 @@ body {
   width: var(--content-width);
   font-size: var(--font-size);
   line-height: var(--line-height);
+  /* 分栏：columns=1 时等同于单栏（无副作用，向后兼容）。
+     正文和大多数原子块（代码/公式/图片/Mermaid）会在栏内自然流动、跟文字穿插，
+     不会独占整行——只有下面显式 column-span:all 的元素才通栏。 */
+  column-count: var(--columns, 1);
+  column-gap: var(--column-gap, 5mm);
+  /* 让分栏尽量等高填充，减少末栏留白 */
+  column-fill: balance;
 }
 
 p,
@@ -85,6 +92,9 @@ table {
   border-collapse: collapse;
   width: 100%;
   break-inside: avoid;
+  /* 是否通栏由 render-pdf.ts 的 markOverflowingAtoms 在渲染时按实际宽度决定：
+     只有塞不进当前栏宽的宽表格才会被设成 column-span:all，能塞进栏的照常分栏，
+     兼顾内容完整性和信息密度。 */
 }
 
 th,
@@ -114,6 +124,8 @@ blockquote {
   break-inside: avoid;
   overflow-x: auto;
   margin: 0.6em 0;
+  /* 是否通栏同样由 markOverflowingAtoms 按实际宽度决定：只有超过栏宽的公式才通栏，
+     能塞进栏的公式照常留在栏内，避免公式密集的文档被频繁打断而损失密度。 */
 }
 
 /* Mermaid 图表：预渲染阶段会把占位 div 替换成内联 SVG */
@@ -127,7 +139,8 @@ blockquote {
 }
 
 .hh-mermaid svg {
-  max-width: var(--content-width);
+  /* max-width 用 100%（相对所在栏的宽度），多栏时图表自动缩到栏宽而不是整页宽 */
+  max-width: 100%;
   /* 图表内部节点越多，Mermaid 自动布局出的原始高度可能越夸张；
      图表只按宽度收缩之前不会限制高度，节点一多就可能单张图占掉将近一整页。
      这里额外按内容区高度的比例封顶，宽高谁更紧张就按谁收缩（等比缩放，不会变形）。 */
@@ -144,10 +157,11 @@ blockquote {
   font-size: 0.8em;
 }
 
-/* 普通图片：按页面内容区宽高等比缩放，避免溢出单页 */
+/* 普通图片：按所在栏宽 + 页面内容区高等比缩放，避免溢出。
+   max-width 用 100%（相对所在栏），多栏时图片自动缩到栏宽而不是整页宽。 */
 .hh-image {
   display: block;
-  max-width: var(--content-width);
+  max-width: 100%;
   max-height: var(--content-height);
   width: auto;
   height: auto;

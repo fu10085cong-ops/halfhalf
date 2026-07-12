@@ -4,32 +4,42 @@
  *
  * 用法：
  *   cd packages/server
- *   npx tsx test/run-fixture.ts [targetPages] [文件名（相对 fixtures/ 目录）] [orientation]
+ *   npx tsx test/run-fixture.ts [targetPages] [文件名（相对 fixtures/ 目录）] [orientation] [columns]
  *
  * 示例：
- *   npx tsx test/run-fixture.ts 2                              # 默认跑 fixtures/sample.md，目标 2 页，竖版
- *   npx tsx test/run-fixture.ts 2 random-topic.md               # 跑 fixtures/random-topic.md，目标 2 页
- *   npx tsx test/run-fixture.ts 2 random-topic.md landscape     # 横版
- *   npx tsx test/run-fixture.ts 2 random-topic.md auto          # 竖版/横版都试，取字号更大的
+ *   npx tsx test/run-fixture.ts 2                                # 默认跑 fixtures/sample.md，目标 2 页，竖版单栏
+ *   npx tsx test/run-fixture.ts 2 random-topic.md landscape      # 横版单栏
+ *   npx tsx test/run-fixture.ts 2 random-topic.md portrait 2     # 竖版固定 2 栏
+ *   npx tsx test/run-fixture.ts 2 random-topic.md portrait auto  # 竖版自动挑栏数
+ *   npx tsx test/run-fixture.ts 2 random-topic.md auto auto      # 方向和栏数都自动，全局择优
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { searchOptimalFontSize } from '../src/engine/binary-search.js';
-import { DEFAULT_MARGINS, type Orientation } from '../src/types/index.js';
+import { DEFAULT_MARGINS, type Columns, type Orientation } from '../src/types/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function parseColumns(arg: string | undefined): Columns {
+  if (!arg || arg === '1') return 1;
+  if (arg === 'auto') return 'auto';
+  const n = Number(arg);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
 
 async function main() {
   const targetPages = Number(process.argv[2] || 2);
   const fileName = process.argv[3] || 'sample.md';
   const orientation = (process.argv[4] || 'portrait') as Orientation;
+  const columns = parseColumns(process.argv[5]);
   const fixturePath = path.join(__dirname, 'fixtures', fileName);
   const markdown = readFileSync(fixturePath, 'utf-8');
 
   console.log(`[run-fixture] 输入文件: ${fileName}`);
   console.log(`[run-fixture] 目标页数: ${targetPages}`);
   console.log(`[run-fixture] 纸张方向: ${orientation}`);
+  console.log(`[run-fixture] 分栏数: ${columns}`);
   console.log('[run-fixture] 开始二分搜索...');
 
   const outcome = await searchOptimalFontSize(
@@ -41,10 +51,11 @@ async function main() {
       density: 'normal',
       precision: 0.5,
       orientation,
+      columns,
     },
     (record) => {
       console.log(
-        `  迭代[${record.orientation}]: fontSize=${record.fontSize}pt pages=${record.pages} withinLimit=${record.withinLimit}`
+        `  迭代[${record.orientation}/${record.columns}栏]: fontSize=${record.fontSize}pt pages=${record.pages} withinLimit=${record.withinLimit}`
       );
     }
   );
@@ -56,6 +67,7 @@ async function main() {
   console.log('[run-fixture] 完成');
   console.log(`  最佳字号: ${outcome.optimalFontSize}pt`);
   console.log(`  最终方向: ${outcome.orientation}`);
+  console.log(`  最终栏数: ${outcome.columns}`);
   console.log(`  实际页数: ${outcome.actualPages}`);
   console.log(`  是否达标: ${outcome.actualPages <= targetPages}`);
   console.log(`  迭代次数: ${outcome.iterations}`);

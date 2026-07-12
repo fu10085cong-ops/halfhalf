@@ -45,6 +45,8 @@ export interface RenderParams {
   margins: Margins;
   density: Density;
   orientation: ResolvedOrientation;
+  /** 分栏数；createRenderContext 用它设初始 CSS 变量，后续可通过 applyColumns 改（用于 auto 搜索） */
+  columns: number;
 }
 
 /** 横版就是把纸张宽高对调，页边距仍然按 top/bottom/left/right 挂在物理边上，不跟着旋转 */
@@ -76,7 +78,7 @@ export async function createRenderContext(
   const contentWidthMm = paper.width - params.margins.left - params.margins.right;
   const contentHeightMm = paper.height - params.margins.top - params.margins.bottom;
 
-  const fullHtml = wrapHtml(bodyHtml, contentWidthMm, contentHeightMm);
+  const fullHtml = wrapHtml(bodyHtml, contentWidthMm, contentHeightMm, params.columns);
   const tempFilePath = path.join(os.tmpdir(), `halfhalf-${randomUUID()}.html`);
   await fs.writeFile(tempFilePath, fullHtml, 'utf-8');
 
@@ -86,7 +88,12 @@ export async function createRenderContext(
   return { browser, page, tempFilePath };
 }
 
-function wrapHtml(bodyHtml: string, contentWidthMm: number, contentHeightMm: number): string {
+function wrapHtml(
+  bodyHtml: string,
+  contentWidthMm: number,
+  contentHeightMm: number,
+  columns: number
+): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -100,6 +107,8 @@ function wrapHtml(bodyHtml: string, contentWidthMm: number, contentHeightMm: num
     --font-size: 12pt;
     --line-height: 1.15;
     --paragraph-spacing: 0.2em;
+    --columns: ${columns};
+    --column-gap: 5mm;
   }
   ${PRINT_CSS}
 </style>
@@ -176,10 +185,61 @@ export async function applyTypography(
   );
 }
 
+/**
+ * 调整分栏数，不重新加载页面、不重跑 Mermaid。栏数只是一个 CSS 变量（column-count），
+ * 所以 columns='auto' 时可以在同一个渲染上下文里反复切换栏数，不需要重开浏览器。
+ */
+export async function applyColumns(ctx: RenderContext, columns: number): Promise<void> {
+  await ctx.page.evaluate((columns) => {
+    document.documentElement.style.setProperty('--columns', String(columns));
+  }, columns);
+}
+
+/**
+ * 按当前字号/栏数的实际渲染宽度，判定哪些"不可重排的原子块"（独立公式、表格）塞不进当前栏，
+ * 只给这些真正超栏的元素加 column-span:all 让它通栏，能塞进栏的保持在栏内。
+ * 必须在每次 pdf() 之前跑（字号和栏数都会改变元素宽度和栏宽），确保页数统计和最终 PDF 一致。
+ *
+ * 两类原子块的"超栏"表现不同，要分别判定：
+ * - 表格：会整体撑破所在栏、变得比栏还宽（rect.width > 栏宽）
+ * - 公式：外框被 overflow 限制在栏宽内，超出部分是内部溢出（scrollWidth > clientWidth）
+ */
+async function markOverflowingAtoms(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const pageEl = document.querySelector<HTMLElement>('.hh-page');
+    if (!pageEl) return;
+
+    const atoms = Array.from(
+      document.querySelectorAll<HTMLElement>('.katex-display, table')
+    );
+    // 先全部复位成不通栏，才能量出它们"待在栏内时"的真实宽度
+    atoms.forEach((el) => {
+      el.style.columnSpan = 'none';
+    });
+
+    // 用一个零高度探针块量出当前栏宽（块级元素在多栏里会占满一栏宽度）
+    const probe = document.createElement('div');
+    probe.style.cssText = 'width:auto;height:0;margin:0;padding:0;border:0;';
+    pageEl.insertBefore(probe, pageEl.firstChild);
+    const columnWidth = probe.getBoundingClientRect().width;
+    probe.remove();
+
+    atoms.forEach((el) => {
+      const breaksOut = el.getBoundingClientRect().width > columnWidth + 1; // 表格撑破栏
+      const internalOverflow = el.scrollWidth - el.clientWidth > 1; // 公式内部溢出
+      if (breaksOut || internalOverflow) {
+        el.style.columnSpan = 'all';
+      }
+    });
+  });
+}
+
 export async function renderPdfAndCountPages(
   ctx: RenderContext,
   params: RenderParams
 ): Promise<{ pdfBuffer: Buffer; pageCount: number }> {
+  await markOverflowingAtoms(ctx.page);
+
   const paper = getPaperDimensionsMm(params.paperSize, params.orientation);
   const pdfBuffer = await ctx.page.pdf({
     width: `${paper.width}mm`,
