@@ -18,6 +18,7 @@ import {
 } from '../engine/render-pdf.js';
 import { cleanupMarkdown } from '../engine/markdown-cleanup.js';
 import { saveJob } from '../engine/job-store.js';
+import { derivePdfName } from '../engine/pdf-name.js';
 
 export const optimizeRouter: Router = Router();
 
@@ -123,7 +124,7 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
     });
 
     const jobId = uuidv4();
-    saveJob(jobId, outcome.pdfBuffer);
+    saveJob(jobId, outcome.pdfBuffer, derivePdfName(params.markdown));
 
     const result: OptimizeResult = {
       optimalFontSize: outcome.optimalFontSize,

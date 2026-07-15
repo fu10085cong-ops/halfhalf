@@ -191,12 +191,14 @@ export async function searchGridFontSize(
       maxAspect: params.maxAspect ?? GRID_DEFAULTS.maxAspect,
       imageBaseDir: params.imageBaseDir,
     });
-    // 盒高 = 内容高 + gutter，向上取整到整数格——skyline 里所有 y 都落在格线上
+    // 盒高 = 内容高 + gutter，不再向上取整到格线：取整曾让每块最多白扔一格（约 8mm），
+    // 实测 19 块的材料因此膨胀 16%、硬生生多出一页。取整只买到"块顶边落在格线上"的
+    // 视觉对齐，而编辑器的拖拽吸附是拖拽时现算的、不依赖自动版预先取整——用页数换对齐
+    // 不划算。横向仍吸标准宽度档（那里的对齐才有视觉价值）。
     const packResult = packBlocks(
       measurements.map((m) => ({
         id: m.id,
-        heightMm:
-          Math.ceil((m.heightPx / PX_PER_MM + grid.gutterMm) / grid.unitMm) * grid.unitMm,
+        heightMm: m.heightPx / PX_PER_MM + grid.gutterMm,
         span: m.span,
       })),
       geo,

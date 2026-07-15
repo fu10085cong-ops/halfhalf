@@ -64,6 +64,8 @@ export interface SceneStats {
 }
 
 export interface SceneResult {
+  /** 自动从内容标题派生的下载文件名（含 .pdf） */
+  fileName: string;
   stats: SceneStats;
   recommended: { scene: SceneId; name: string; reason: string };
   usedScene: SceneId;

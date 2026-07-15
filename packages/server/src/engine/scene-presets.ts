@@ -97,8 +97,10 @@ export const SCENE_THRESHOLDS = {
   /** visual：独立图片块 ≥ 此数，或图片块占比 ≥ visualImageRatio */
   visualImageCount: 2,
   visualImageRatio: 0.15,
-  /** formula：独立公式密度（个/千字）≥ 此值，且独立公式总数 ≥ formulaMinDisplay */
-  displayPer1000: 10,
+  /** formula：独立公式密度（个/千字）≥ 此值，且独立公式总数 ≥ formulaMinDisplay。
+   *  判例：calc-monthly（微积分，5.7/千字、13 个）应命中 formula——数学课哪怕文本量大，
+   *  也不能推给会把公式缩小的 cram；random-topic（4.6/千字、3 个）仍是 balanced */
+  displayPer1000: 5,
   formulaMinDisplay: 4,
   /** text-cram：剥后正文字数 ≥ 此值 */
   cramCharCount: 1500,

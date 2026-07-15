@@ -15,8 +15,13 @@ exportRouter.get('/download/:jobId/pdf', (req: Request, res: Response) => {
     res.status(404).json(response);
     return;
   }
+  const fileName = job.fileName ?? `halfhalf-${req.params.jobId}.pdf`;
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="halfhalf-${req.params.jobId}.pdf"`);
+  // filename* 才能携带中文（RFC 5987）；filename 留一个纯 ASCII 兜底给老客户端
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="halfhalf.pdf"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+  );
   res.send(job.pdfBuffer);
 });
 

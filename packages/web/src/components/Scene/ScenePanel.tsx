@@ -229,8 +229,8 @@ export default function ScenePanel() {
         {pdfUrl ? (
           <>
             <div>
-              <a href={pdfUrl} download="halfhalf.pdf">
-                下载 PDF
+              <a href={pdfUrl} download={result?.fileName ?? 'halfhalf.pdf'}>
+                下载 PDF{result ? `（${result.fileName}）` : ''}
               </a>
             </div>
             <iframe title="PDF 预览" src={pdfUrl} style={{ flex: 1, border: '1px solid #ccc' }} />

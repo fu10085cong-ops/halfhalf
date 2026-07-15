@@ -3,14 +3,16 @@
 interface Job {
   pdfBuffer: Buffer;
   createdAt: number;
+  /** 下载时用的文件名（含 .pdf 后缀），不给则下载路由用 jobId 兜底 */
+  fileName?: string;
 }
 
 const JOB_TTL_MS = 30 * 60 * 1000;
 
 const jobs = new Map<string, Job>();
 
-export function saveJob(jobId: string, pdfBuffer: Buffer): void {
-  jobs.set(jobId, { pdfBuffer, createdAt: Date.now() });
+export function saveJob(jobId: string, pdfBuffer: Buffer, fileName?: string): void {
+  jobs.set(jobId, { pdfBuffer, createdAt: Date.now(), fileName });
   cleanupExpiredJobs();
 }
 

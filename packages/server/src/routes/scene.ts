@@ -19,6 +19,7 @@ import {
 } from '../engine/scene-presets.js';
 import { renderGridPdf, searchGridFontSize } from '../engine/grid-layout.js';
 import { precheckFormulas } from '../engine/precheck-formulas.js';
+import { derivePdfName } from '../engine/pdf-name.js';
 import { saveJob } from '../engine/job-store.js';
 
 export const sceneRouter: Router = Router();
@@ -102,9 +103,11 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
     );
 
     const jobId = randomUUID();
-    saveJob(jobId, pdfBuffer);
+    const fileName = derivePdfName(body.markdown);
+    saveJob(jobId, pdfBuffer, fileName);
 
     res.json({
+      fileName,
       stats,
       recommended: {
         scene: recommended.scene,

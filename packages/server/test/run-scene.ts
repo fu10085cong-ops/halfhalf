@@ -83,11 +83,12 @@ async function main() {
   const { grid, best } = outcome;
 
   console.log(`\n[run-scene] 最优字号: ${best.fontSize}pt  实际 ${best.pages} 页  达标: ${outcome.withinTargetPages}`);
+  // 宽度是格档（吸附），高度是自然高（不再取整），所以分别用格/mm 显示
   const sizeNote = best.measurements
-    .map((m) => {
-      const hUnits = Math.ceil((m.heightPx / PX_PER_MM + grid.gutterMm) / grid.unitMm);
-      return `${m.id}:${m.span}×${hUnits}格${m.scale < 1 ? `(×${m.scale.toFixed(2)})` : ''}`;
-    })
+    .map(
+      (m) =>
+        `${m.id}:${m.span}格×${(m.heightPx / PX_PER_MM).toFixed(0)}mm${m.scale < 1 ? `(×${m.scale.toFixed(2)})` : ''}`
+    )
     .join(' ');
   console.log(`[run-scene] 块尺寸: ${sizeNote}`);
   if (best.oversized.length) {

@@ -77,11 +77,12 @@ async function main() {
   }
 
   console.log(`\n[run-grid] 最优字号: ${best.fontSize}pt  实际 ${best.pages} 页  达标: ${outcome.withinTargetPages}`);
+  // 宽度是格档（吸附），高度是自然高（不再取整），所以分别用格/mm 显示
   const tierNote = best.measurements
-    .map((m) => {
-      const hUnits = Math.ceil((m.heightPx / PX_PER_MM + grid.gutterMm) / grid.unitMm);
-      return `${m.id}:${m.span}×${hUnits}格${m.scale < 1 ? `(×${m.scale.toFixed(2)})` : ''}`;
-    })
+    .map(
+      (m) =>
+        `${m.id}:${m.span}格×${(m.heightPx / PX_PER_MM).toFixed(0)}mm${m.scale < 1 ? `(×${m.scale.toFixed(2)})` : ''}`
+    )
     .join(' ');
   console.log(`[run-grid] 块尺寸: ${tierNote}`);
   if (best.oversized.length) console.log(`[run-grid] ⚠️ 超高块: ${best.oversized.join(', ')}`);
