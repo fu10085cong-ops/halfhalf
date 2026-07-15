@@ -76,8 +76,9 @@ async function binarySearchFontSize(
 
   const history: IterationRecord[] = [];
   let iterations = 0;
-  let lo = SEARCH_CONFIG.minFontSize;
-  let hi = SEARCH_CONFIG.maxFontSize;
+  // 显式标 number：SEARCH_CONFIG 是 as const，直接赋值会把 lo/hi 锁成字面量类型
+  let lo: number = SEARCH_CONFIG.minFontSize;
+  let hi: number = SEARCH_CONFIG.maxFontSize;
 
   const probe = async (fontSize: number) => {
     await applyTypography(ctx, fontSize, params.density);

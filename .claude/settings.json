@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(pnpm exec *)",
+      "Bash(/usr/bin/python3 -c ' *)"
+    ]
+  }
+}

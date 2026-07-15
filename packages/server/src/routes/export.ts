@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import type { ApiErrorResponse } from '../types/index.js';
 import { getJob } from '../engine/job-store.js';
 
-export const exportRouter = Router();
+export const exportRouter: Router = Router();
 
 /**
  * GET /api/download/:jobId/pdf

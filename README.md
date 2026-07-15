@@ -55,11 +55,15 @@ pnpm dev
 
 ```bash
 cd packages/server
-pnpm test:fixture 5   # 数字是目标页数，默认 2
+pnpm test:fixture 5   # 连续多栏流引擎：数字是目标页数，默认 2
+
+# layout 卡片引擎（列模式）与网格引擎：
+pnpm exec tsx test/run-layout.ts os-large.md 2 3   # 目标 2 页、3 栏，自动求最大字号
+pnpm exec tsx test/run-grid.ts os-large.md 2       # 网格模式（24 格制），同样二分搜索
 ```
 
-会跑 `test/fixtures/sample.md`（覆盖代码高亮、数学/物理公式、Mermaid 图表、长表格等场景），
-终端打印每轮二分搜索的字号/页数，并把最终 PDF 写到 `test/fixtures/sample.output.pdf`。
+会跑 `test/fixtures/` 下的样例（覆盖代码高亮、数学/物理公式、Mermaid 图表、长表格、图片等场景），
+终端打印每轮二分搜索的字号/页数，并把最终 PDF 写到 `test/fixtures/<名字>.output/.layout/.grid.pdf`。
 
 ---
 
@@ -76,9 +80,13 @@ halfhalf/
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   ├── test/
-│   │   │   ├── run-fixture.ts   # 绕开 HTTP，直接跑引擎的验证脚本
-│   │   │   └── fixtures/
-│   │   │       └── sample.md    # 覆盖各类排版场景的测试文档
+│   │   │   ├── run-fixture.ts   # 连续多栏流引擎端到端（绕开 HTTP 直接跑引擎）
+│   │   │   ├── run-chunk.ts     # layout 引擎分步验证：分块
+│   │   │   ├── run-measure.ts   # layout 引擎分步验证：测量
+│   │   │   ├── run-pack.ts      # layout 引擎分步验证：固定字号拼装+渲染
+│   │   │   ├── run-layout.ts    # layout 引擎端到端（列模式 + 目标页数搜索）
+│   │   │   ├── run-grid.ts      # 网格引擎端到端（24 格制 + 公式预检 + 目标页数搜索）
+│   │   │   └── fixtures/        # 覆盖各类排版场景的测试文档（sample/os-large/image-test 等）
 │   │   └── src/
 │   │       ├── index.ts         # Express 入口
 │   │       ├── types/
@@ -89,9 +97,18 @@ halfhalf/
 │   │       │   ├── export.ts    # PDF 下载 API
 │   │       │   └── ai.ts        # 通用 BYOK AI 转发接口
 │   │       ├── engine/          # 排版引擎
-│   │       │   ├── md-to-html.ts       # Markdown → HTML（Shiki + KaTeX + Mermaid 占位 + 图片缩放）
+│   │       │   ├── md-to-html.ts       # Markdown → HTML（Shiki + KaTeX + Mermaid 占位 + 图片 base64 内嵌）
 │   │       │   ├── render-pdf.ts       # Chromium 渲染 + Mermaid 预渲染 + pdf-lib 读页数
-│   │       │   ├── binary-search.ts    # 字号二分搜索主循环
+│   │       │   ├── binary-search.ts    # 字号二分搜索主循环（连续多栏流引擎）
+│   │       │   ├── render-assets.ts    # 共享渲染资产（KaTeX 字体内联 / 原子缩放 / Mermaid 预渲染）
+│   │       │   ├── browser-pool.ts     # 共享 Chromium 实例（进程内一次冷启动，测量/渲染复用）
+│   │       │   ├── chunk-markdown.ts   # layout 引擎①：按标题分块，独立图片自成块
+│   │       │   ├── measure-blocks.ts   # layout 引擎②：逐块多档位宽度测量，图片按自然宽度吸附
+│   │       │   ├── pack-blocks.ts      # layout 引擎③：skyline 贪心拼装（纯算法，栏/格通用）
+│   │       │   ├── render-layout.ts    # layout 引擎④：按矩形绝对定位渲染 PDF（列/网格共用核心）
+│   │       │   ├── search-layout.ts    # layout 引擎⑤：目标页数 → 二分搜索最大字号（列模式）
+│   │       │   ├── grid-layout.ts      # 网格版面模型：24 单位格 + 标准宽度档位 + gutter + 搜索
+│   │       │   ├── precheck-formulas.ts # 公式预检：扫 KaTeX 降级红字，带块位置上报
 │   │       │   ├── markdown-cleanup.ts # 确定性格式清理（用户可选开启）
 │   │       │   └── job-store.ts        # PDF 任务内存存储（供下载端点使用）
 │   │       └── templates/
@@ -260,10 +277,17 @@ Mermaid 图表只在二分搜索开始前预渲染一次（图表内部布局不
 
 ### 进行中 / 下一步
 
-- [x] 多栏排版（固定栏数 / auto 自动挑栏数，方向 × 栏数联合择优）— 在 `multi-column` 分支开发，需拿多种内容形态的真实样例调优（栏间留白 vs 内容完整性的取舍）
-- [ ] Chromium 浏览器实例池 + 并发控制（多人共用前必须做，否则并发请求会耗尽内存；也是把 orientation/columns='auto' 设为默认值的前提）
-- [ ] AI 语义级精简建议（依赖上面的 BYOK 接口，输出建议 diff，人工确认后才应用）
-- [ ] 图片/表格跨页的进一步验证（当前实现已具备，未做充分的真实场景测试）
+- [x] **图片链路（已通）**：本地图片自动转 base64 内嵌（`md-to-html.ts` 的 `imageBaseDir`），绕开 file:// 相对路径失效的坑；已用真实课件截图（MIS 能带图）验证渲染/缩放/宽高比/与文字块混排均正常。data:/http(s): 的 src 原样透传，为 web 上传铺路。
+- [x] **图片自成块 + 标准宽度吸附**：分块器把独立成段的图片拆成 `kind: 'image'` 的内容块（图后剩余文字进"续块"）；测量阶段按图片自然宽度吸附到能原尺寸放下的最小宽度档位（允许 5% 缩小容差，避免差几个百分点就跳大一档留出大片空白），全放不下则取最大档由 CSS 等比缩小。列模式档位 = 1..N 栏宽，网格模式档位 = 8/12/16/24 格。已验证：MIS 能带图列模式跨 2 栏、网格模式吸附 16 格（×0.99），均接近原尺寸显示、文字块绕排。
+- [x] **大文本压测（layout 引擎）**：14 节操作系统讲义（表格/公式/密集要点混排）13pt 压进 2 页 A4 三栏、无超高块。压测暴露并修复了一个真 bug：超宽公式 `applyAtomScaling` 缩放后仍被自身 `overflow-x` 裁剪（公式的溢出发生在盒子内部，纸上没有滚动条；现在先把盒子放开到 max-content 再整体缩放）。
+- [x] 多栏排版（固定栏数 / auto 自动挑栏数，方向 × 栏数联合择优）— 需拿多种内容形态的真实样例调优（栏间留白 vs 内容完整性的取舍）
+- [x] 全仓 `tsc --noEmit` 修绿（补 DOM lib、Express 路由类型注解、字面量类型收窄），类型检查从此可当回归安全网用
+- [x] **网格版面模型（自动排版侧）**：`grid-layout.ts` + `test/run-grid.ts`——内容区分割成 24 列单位格（A4 竖版格边长约 7.9mm），块宽吸附标准档位 8/12/16/24 格（= 1/3、1/2、2/3、整页宽），块高向上取整到整数格（所有块落在格线上，编辑器拖拽吸附用同一坐标系），块间强制留白 4mm 烘进每块盒子（四周各内缩一半），永不贴边排满。复用同一套 分块→测量→skyline→渲染 流水线和目标页数二分搜索。已验证：os-large 12.5pt 压进 2 页、密度与列模式相当；image-test 图片吸附 16 格档。标准卡尺寸（小卡 8×6 / 高卡 8×16 / 中卡 12×10 / 大卡 12×16 / 通栏 24×6 格）作为编辑器预设与 AI 内容长度目标导出（`STANDARD_CARDS`），自动模式不硬套固定高度——任意长度内容塞固定高度卡片只会产生留白或溢出。
+- [x] **共享 Chromium 实例**（`browser-pool.ts`）：进程内只冷启动一次，测量/渲染复用、每次调用独立 page；大文本整轮字号搜索从几十秒降到 2 秒内。脚本/服务收尾需调 `closeSharedBrowser()`。
+- [x] **公式预检**（`precheck-formulas.ts`）：不开浏览器把每块干跑一遍渲染管线，扫出 KaTeX 降级红字（`katex-error`）并带块位置/错误信息上报，替代"到 PDF 里才看见红字"；已接入 run-layout / run-grid。也是将来 AI 改写公式的安全网（改写后再预检，错了打回）。
+- [ ] 网格编辑器（前端）：按 `GridSpec` 坐标系做块的拖拽/缩放吸附，`STANDARD_CARDS` 为新建/吸附预设；自动版做底，人工微调收尾
+- [ ] `/api/layout/*` 接口化（把 layout/grid 引擎暴露给前端；此时补并发控制——限制同时打开的 page 数，多人共用的前提）
+- [ ] AI 语义级精简建议（依赖上面的 BYOK 接口，输出建议 diff，人工确认后才应用；公式预检做安全网）
 
 ### 后续版本
 

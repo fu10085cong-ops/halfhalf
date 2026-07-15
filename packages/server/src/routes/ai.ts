@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { AiProxyRequest, ApiErrorResponse } from '../types/index.js';
 
-export const aiRouter = Router();
+export const aiRouter: Router = Router();
 
 /**
  * BYOK 场景下允许转发到的 AI 服务商域名。用户自己的 key、自己承担调用费用，

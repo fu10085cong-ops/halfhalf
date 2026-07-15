@@ -19,7 +19,7 @@ import {
 import { cleanupMarkdown } from '../engine/markdown-cleanup.js';
 import { saveJob } from '../engine/job-store.js';
 
-export const optimizeRouter = Router();
+export const optimizeRouter: Router = Router();
 
 const VALID_PAPER_SIZES = new Set(Object.keys(PAPER_SIZES));
 const VALID_DENSITIES = new Set(Object.keys(DENSITY_CONFIG));

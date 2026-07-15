@@ -119,13 +119,16 @@ blockquote {
   break-inside: avoid;
 }
 
-/* KaTeX 公式：行内公式允许换行，独立公式块保护不被切断 */
+/* KaTeX 公式：行内公式允许换行；独立公式是 KaTeX 渲染的刚性二维盒子，无法折行，
+   密度优先场景下不居中（省两侧留白）、压缩上下间距，超栏时靠 applyAtomScaling 等比缩小。 */
 .katex-display {
   break-inside: avoid;
   overflow-x: auto;
-  margin: 0.6em 0;
-  /* 是否通栏同样由 markOverflowingAtoms 按实际宽度决定：只有超过栏宽的公式才通栏，
-     能塞进栏的公式照常留在栏内，避免公式密集的文档被频繁打断而损失密度。 */
+  margin: 0.3em 0;
+  text-align: left;
+}
+.katex-display > .katex {
+  text-align: left;
 }
 
 /* Mermaid 图表：预渲染阶段会把占位 div 替换成内联 SVG */

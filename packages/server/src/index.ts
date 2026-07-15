@@ -4,7 +4,7 @@ import { optimizeRouter } from './routes/optimize.js';
 import { exportRouter } from './routes/export.js';
 import { aiRouter } from './routes/ai.js';
 
-const app = express();
+const app: express.Express = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
