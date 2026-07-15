@@ -3,9 +3,12 @@ import AppLayout from './components/Layout/AppLayout';
 import MarkdownEditor from './components/Editor/MarkdownEditor';
 import ParameterPanel from './components/Config/ParameterPanel';
 import ResultPanel from './components/Result/ResultPanel';
-import type { OptimizeResult, IterationRecord } from './types';
+import ScenePanel from './components/Scene/ScenePanel';
+import type { Density, OptimizeResult, IterationRecord } from './types';
 
 function App() {
+  // 'scene' = 场景排版（网格引擎，新，默认）；'flow' = 连续多栏流（旧）
+  const [tab, setTab] = useState<'scene' | 'flow'>('scene');
   const [markdown, setMarkdown] = useState(`# 你好，HalfHalf！
 
 这是一个 **Markdown 自动分页排版系统** 的演示。
@@ -35,7 +38,7 @@ function hello() {
 
   const [targetPages, setTargetPages] = useState(5);
   const [paperSize, setPaperSize] = useState<'A4' | 'A5' | 'Letter'>('A4');
-  const [density, setDensity] = useState<'compact' | 'normal' | 'loose'>('normal');
+  const [density, setDensity] = useState<Density>('normal');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [history, setHistory] = useState<IterationRecord[]>([]);
@@ -100,8 +103,35 @@ function hello() {
     }
   };
 
+  const tabButton = (key: 'scene' | 'flow', label: string) => (
+    <button
+      onClick={() => setTab(key)}
+      style={{
+        padding: '4px 12px',
+        fontWeight: tab === key ? 'bold' : 'normal',
+        textDecoration: tab === key ? 'underline' : 'none',
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <AppLayout>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '8px 16px 0', display: 'flex', gap: 8 }}>
+          {tabButton('scene', '场景排版（网格引擎）')}
+          {tabButton('flow', '连续多栏流（旧版）')}
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          {tab === 'scene' ? <ScenePanel /> : renderFlowTab()}
+        </div>
+      </div>
+    </AppLayout>
+  );
+
+  function renderFlowTab() {
+    return (
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 320px',
@@ -139,8 +169,8 @@ function hello() {
           />
         </div>
       </div>
-    </AppLayout>
-  );
+    );
+  }
 }
 
 export default App;
