@@ -95,13 +95,20 @@ export async function applyTypography(
 ): Promise<void> {
   const config = DENSITY_CONFIG[density];
   await ctx.page.evaluate(
-    ({ fontSize, lineHeight, paragraphSpacing }) => {
+    ({ fontSize, lineHeight, paragraphSpacing, density }) => {
       const root = document.documentElement;
       root.style.setProperty('--font-size', `${fontSize}pt`);
       root.style.setProperty('--line-height', String(lineHeight));
       root.style.setProperty('--paragraph-spacing', `${paragraphSpacing}em`);
+      // print.css 里按 [data-density] 作用域的密度专属规则（如 cram 的标题行内化）靠它生效
+      document.body.dataset.density = density;
     },
-    { fontSize, lineHeight: config.lineHeight, paragraphSpacing: config.paragraphSpacing }
+    {
+      fontSize,
+      lineHeight: config.lineHeight,
+      paragraphSpacing: config.paragraphSpacing,
+      density,
+    }
   );
 }
 

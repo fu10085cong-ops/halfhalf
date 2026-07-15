@@ -5,11 +5,16 @@
  *
  * 用法：
  *   cd packages/server
- *   npx tsx test/run-grid.ts [文件名] [目标页数] [orientation] [strategy] [minScale]
+ *   npx tsx test/run-grid.ts [文件名] [目标页数] [orientation] [strategy] [minScale] [maxAspect] [density] [gutterMm]
+ *   maxAspect：文字块最大高宽比（默认 2）。调大 → 更多块挤窄档（趋向等宽栏）；调小 → 更多宽卡
+ *   density：compact/normal/loose/cram（cram = 极限密度，分隔靠发丝线不靠留白）
+ *   gutterMm：块间留白 mm（默认 1 格宽 ≈7.9；cram 建议 2~3）
  *
  * 示例：
  *   npx tsx test/run-grid.ts os-large.md 2                     # A4 竖版 24 格制，自动求最大字号
  *   npx tsx test/run-grid.ts image-test.md 1 portrait size-desc
+ *   npx tsx test/run-grid.ts os-large.md 2 portrait column-flow 0.5 1.5   # 更多宽卡
+ *   npx tsx test/run-grid.ts os-large.md 1 portrait column-flow 0.5 4 cram 2   # 极限密度塞 1 页
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +38,9 @@ async function main() {
   const orientation = (process.argv[4] || 'portrait') as ResolvedOrientation;
   const strategy = (process.argv[5] || 'column-flow') as PackStrategy;
   const minScale = Number(process.argv[6] || 0.5);
+  const maxAspect = process.argv[7] ? Number(process.argv[7]) : undefined;
+  const density = (process.argv[8] || 'normal') as GridSearchParams['density'];
+  const gutterMm = process.argv[9] ? Number(process.argv[9]) : undefined;
   const fixturesDir = path.join(__dirname, 'fixtures');
   const markdown = readFileSync(path.join(fixturesDir, fileName), 'utf-8');
 
@@ -42,14 +50,16 @@ async function main() {
     paperSize: 'A4',
     orientation,
     margins: DEFAULT_MARGINS,
-    density: 'normal',
+    density,
     strategy,
     minScale,
+    maxAspect,
+    gutterMm,
     imageBaseDir: fixturesDir,
   };
 
   console.log(
-    `[run-grid] ${fileName} | 目标${targetPages}页 A4 ${orientation} ${strategy} minScale=${minScale}`
+    `[run-grid] ${fileName} | 目标${targetPages}页 A4 ${orientation} ${strategy} minScale=${minScale}${maxAspect !== undefined ? ` maxAspect=${maxAspect}` : ''}`
   );
 
   const outcome = await searchGridFontSize(params, (t) =>
@@ -57,7 +67,7 @@ async function main() {
   );
   const { grid, best } = outcome;
   console.log(
-    `[run-grid] 网格: ${grid.unitsX}×${grid.unitsY} 格（格边长 ${grid.unitMm.toFixed(2)}mm，留白 ${grid.gutterMm}mm，宽度档位 ${grid.widthTiers.join('/')}格）`
+    `[run-grid] 网格: ${grid.unitsX}×${grid.unitsY} 格（格边长 ${grid.unitMm.toFixed(2)}mm，留白 ${grid.gutterMm.toFixed(1)}mm，宽度档位 ${grid.widthTiers.join('/')}格）`
   );
 
   // 公式预检（不占浏览器，纯管线干跑）
@@ -82,7 +92,7 @@ async function main() {
     orientation,
     margins: DEFAULT_MARGINS,
     fontSize: best.fontSize,
-    density: 'normal',
+    density,
     imageBaseDir: fixturesDir,
   });
   const outputPath = path.join(fixturesDir, fileName.replace(/\.md$/, '.grid.pdf'));

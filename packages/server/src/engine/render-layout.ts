@@ -126,7 +126,7 @@ export async function renderRectsPdf(
   ${PRINT_CSS}
 </style>
 </head>
-<body>
+<body data-density="${opts.density}">
 ${pagesHtml.join('\n')}
 </body>
 </html>`;

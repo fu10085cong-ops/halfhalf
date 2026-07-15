@@ -1,8 +1,9 @@
 /** 纸张尺寸定义 */
 export type PaperSize = 'A4' | 'A5' | 'Letter';
 
-/** 排版密度 */
-export type Density = 'compact' | 'normal' | 'loose';
+/** 排版密度。'cram' 是照着真实半开卷小抄校准的极限档：分隔靠细线不靠留白，
+ *  标题行内化（不放大、不独占空间），重点靠粗体承担扫读 */
+export type Density = 'compact' | 'normal' | 'loose' | 'cram';
 
 /** 纸张方向。'auto' 会并行试竖版和横版两轮完整搜索，取字号更大的结果——总耗时不明显增加，但峰值内存/CPU 占用接近翻倍（两个 Chromium 实例同时跑） */
 export type Orientation = 'portrait' | 'landscape' | 'auto';
@@ -102,11 +103,13 @@ export const DEFAULT_MARGINS: Margins = {
   right: 10,
 };
 
-/** 密度对应的行高配置 */
+/** 密度对应的行高配置。cram 的其余压缩规则（标题/列表/表格）在 print.css 里按
+ *  [data-density='cram'] 作用域生效 */
 export const DENSITY_CONFIG: Record<Density, { lineHeight: number; paragraphSpacing: number }> = {
   compact: { lineHeight: 1.05, paragraphSpacing: 0.1 },
   normal: { lineHeight: 1.15, paragraphSpacing: 0.2 },
   loose: { lineHeight: 1.3, paragraphSpacing: 0.4 },
+  cram: { lineHeight: 1.0, paragraphSpacing: 0.05 },
 };
 
 /** 二分搜索配置 */

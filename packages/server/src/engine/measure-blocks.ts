@@ -67,6 +67,12 @@ export interface MeasureOptions {
    * 这是"密度 vs 可读性"的调节钮——想更密就调低，想公式更大就调高。
    */
   minScale?: number;
+  /**
+   * 文字块的最大高宽比（高 / 内容盒宽）。不给则不启用（列模式默认行为：永远取最窄）。
+   * 给了之后，又高又瘦的"竹竿块"会升到更宽的档位，让不同体量的内容呈现不同宽度的卡片，
+   * 而不是全部挤在最窄档里输出千篇一律的等宽栏。图片块不受此限制。
+   */
+  maxAspect?: number;
   /** 本地图片解析基准目录，透传给 markdownToHtml 做 base64 内嵌 */
   imageBaseDir?: string;
 }
@@ -125,7 +131,7 @@ export async function measureBlocks(
   ${PRINT_CSS}
 </style>
 </head>
-<body>
+<body data-density="${options.density}">
 ${containers.join('\n')}
 </body>
 </html>`;
@@ -192,15 +198,21 @@ ${containers.join('\n')}
           continue;
         }
 
-        const fit = cands.find((c) => c.scale >= minScale);
+        // 可读性达标的候选（按 span 升序）；再按最大高宽比筛掉"竹竿块"
+        const fits = cands.filter((c) => c.scale >= minScale);
+        const shapely =
+          options.maxAspect === undefined
+            ? fits[0]
+            : fits.find((c) => c.heightPx <= options.maxAspect! * spanWidth(c.span)) ??
+              fits[fits.length - 1];
         const chosen =
-          fit ?? cands.reduce((best, c) => (c.scale > best.scale ? c : best), cands[0]);
+          shapely ?? cands.reduce((best, c) => (c.scale > best.scale ? c : best), cands[0]);
         results.push({
           id: b.id,
           span: chosen.span,
           heightPx: chosen.heightPx,
           scale: chosen.scale,
-          belowMinScale: !fit,
+          belowMinScale: fits.length === 0,
         });
       }
       return results;

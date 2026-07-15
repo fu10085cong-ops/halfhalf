@@ -31,7 +31,7 @@ export interface GridSpec {
   unitsY: number;
   /** 格边长 mm（= 内容区宽 / unitsX） */
   unitMm: number;
-  /** 块与块之间的强制留白 mm（每块盒子四周各内缩一半） */
+  /** 块与块之间的强制留白 mm（每块盒子四周各内缩一半）；默认 = 1 格宽 */
   gutterMm: number;
   /** 标准宽度档位（格数，升序） */
   widthTiers: number[];
@@ -39,19 +39,28 @@ export interface GridSpec {
 
 export const GRID_DEFAULTS = {
   unitsX: 24,
-  gutterMm: 4,
-  widthTiers: [8, 12, 16, 24],
+  widthTiers: [6, 8, 12, 16, 24],
+  /**
+   * 文字块最大高宽比（高 / 内容盒宽）。没有它所有文字块都会吸到最窄档，
+   * 输出千篇一律的等宽栏；有了它，"竹竿块"自动升宽档，小块留窄档，
+   * 不同体量的章节呈现不同宽度的卡片。
+   */
+  maxAspect: 2,
 } as const;
 
 /**
  * 标准块尺寸预设（宽×高，单位：格）。编辑器的新建/吸附档位，
  * 也是 AI 压缩模块的内容长度目标（"一段内容约一张中卡"）。
+ * 宽度取自 widthTiers（6/8/12/16/24 = 1/4、1/3、1/2、2/3、整页宽）。
  */
 export const STANDARD_CARDS = [
+  { name: '迷你卡', w: 6, h: 6 },
+  { name: '窄长卡', w: 6, h: 12 },
   { name: '小卡', w: 8, h: 6 },
   { name: '高卡', w: 8, h: 16 },
   { name: '中卡', w: 12, h: 10 },
   { name: '大卡', w: 12, h: 16 },
+  { name: '宽卡', w: 16, h: 10 },
   { name: '通栏', w: 24, h: 6 },
 ] as const;
 
@@ -67,10 +76,13 @@ export interface GridSearchParams {
   minScale: number;
   /** 横向格数，默认 24 */
   unitsX?: number;
-  /** 强制留白 mm，默认 4 */
+  /** 强制留白 mm，默认 = 1 格宽（约 7.9mm）。默认版疏朗优先——这不是最终结果，
+   *  后面还有"放大"（保持留白重搜字号）或编辑器人为微调；想更密显式传小值 */
   gutterMm?: number;
-  /** 标准宽度档位（格数），默认 [8, 12, 16, 24] */
+  /** 标准宽度档位（格数），默认 [6, 8, 12, 16, 24] */
   widthTiers?: number[];
+  /** 文字块最大高宽比，默认 2；调大则更多块挤最窄档（趋向等宽栏），调小则更多块升宽档 */
+  maxAspect?: number;
   /** 字号搜索精度 pt，默认取 SEARCH_CONFIG.defaultPrecision */
   precision?: number;
   /** 本地图片解析基准目录，透传做 base64 内嵌 */
@@ -127,7 +139,8 @@ export function resolveGrid(params: {
       unitsX,
       unitsY: Math.floor(contentH / unitMm),
       unitMm,
-      gutterMm: params.gutterMm ?? GRID_DEFAULTS.gutterMm,
+      // 默认留白 = 1 格宽：留白本身也落在网格制上，前端看起来干净规整
+      gutterMm: params.gutterMm ?? unitMm,
       widthTiers,
     },
     contentHMm: contentH,
@@ -175,6 +188,7 @@ export async function searchGridFontSize(
       fontSize,
       density: params.density,
       minScale: params.minScale,
+      maxAspect: params.maxAspect ?? GRID_DEFAULTS.maxAspect,
       imageBaseDir: params.imageBaseDir,
     });
     // 盒高 = 内容高 + gutter，向上取整到整数格——skyline 里所有 y 都落在格线上
