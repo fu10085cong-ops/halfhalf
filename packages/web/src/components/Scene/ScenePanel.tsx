@@ -11,6 +11,7 @@ const SCENE_OPTIONS: { value: SceneId | 'auto'; label: string }[] = [
   { value: 'auto', label: '自动推荐' },
   { value: 'text-cram', label: '极限文本（背诵型大文本，samples 风格）' },
   { value: 'formula', label: '理科公式（公式不缩小，允许留白）' },
+  { value: 'code', label: '代码密集（编程课，代码不折行）' },
   { value: 'visual', label: '图文混排（截图多的课）' },
   { value: 'balanced', label: '均衡默认' },
 ];
@@ -54,6 +55,7 @@ export default function ScenePanel() {
   const [targetPages, setTargetPages] = useState(1);
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [debug, setDebug] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SceneResult | null>(null);
@@ -83,7 +85,7 @@ export default function ScenePanel() {
       const resp = await fetch('/api/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown, targetPages, scene, orientation }),
+        body: JSON.stringify({ markdown, targetPages, scene, orientation, debug }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -103,6 +105,8 @@ export default function ScenePanel() {
 
   const warn = result
     ? [
+        // 多类刚性原子冲突时的取舍（如"图+公式"材料优先保了公式）——过去是静默失败
+        ...(result.recommended.warning ? [result.recommended.warning] : []),
         ...result.warnings.formulaIssues.map(
           (i) => `公式错误 @「${i.blockTitle || i.blockId}」: ${i.message}`
         ),
@@ -130,7 +134,10 @@ export default function ScenePanel() {
               min={1}
               max={50}
               value={targetPages}
-              onChange={(e) => setTargetPages(Number(e.target.value))}
+              onChange={(e) =>
+                // 清空/非法输入兜底到 1，并钳在服务端校验的 1~50 区间内
+                setTargetPages(Math.min(50, Math.max(1, parseInt(e.target.value) || 1)))
+              }
               style={{ width: 56, marginLeft: 4 }}
             />
           </label>
@@ -158,6 +165,14 @@ export default function ScenePanel() {
               <option value="portrait">竖版</option>
               <option value="landscape">横版</option>
             </select>
+          </label>
+          <label title="在 PDF 上叠加 24 列网格线、每个块的方框和标签；不改变排版本身">
+            <input
+              type="checkbox"
+              checked={debug}
+              onChange={(e) => setDebug(e.target.checked)}
+            />
+            显示网格
           </label>
           <button onClick={() => fileInputRef.current?.click()}>插入图片</button>
           <input
@@ -200,7 +215,8 @@ export default function ScenePanel() {
             <div>
               内容统计：正文≈{result.stats.charCount}字 · 独立公式{result.stats.displayFormulaCount} ·
               行内公式{result.stats.inlineFormulaCount} · 图片块{result.stats.imageBlockCount} · 表格
-              {result.stats.tableCount} · 共{result.stats.blockCount}块
+              {result.stats.tableCount} · 代码块{result.stats.codeBlockCount} · 共
+              {result.stats.blockCount}块
             </div>
             <div>
               推荐场景：<b>{result.recommended.name}</b>（{result.recommended.reason}）

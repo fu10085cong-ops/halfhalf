@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from 'playwright';
+import type { Page } from 'playwright';
 import { PDFDocument } from 'pdf-lib';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -6,6 +6,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { Density, Margins, PaperSize, ResolvedOrientation } from '../types/index.js';
 import { PAPER_SIZES, DENSITY_CONFIG } from '../types/index.js';
+import { openPage } from './browser-pool.js';
 import { KATEX_CSS_INLINED, PRINT_CSS, renderMermaidDiagrams } from './render-assets.js';
 
 export interface RenderParams {
@@ -26,21 +27,20 @@ function getPaperDimensionsMm(paperSize: PaperSize, orientation: ResolvedOrienta
 }
 
 export interface RenderContext {
-  browser: Browser;
   page: Page;
   tempFilePath: string;
 }
 
 /**
  * 建立一次渲染上下文：写入临时 HTML 文件（用于让 KaTeX 字体等相对路径资源能通过 file:// 正常加载）、
- * 打开 Chromium 页面，并完成一次性的 Mermaid 预渲染（结果与字号无关，不需要在二分搜索里重复渲染）。
+ * 在共享 Chromium（browser-pool，免每次数百 ms 冷启动）上开独立 page，并完成一次性的
+ * Mermaid 预渲染（结果与字号无关，不需要在二分搜索里重复渲染）。
  */
 export async function createRenderContext(
   bodyHtml: string,
   params: RenderParams
 ): Promise<RenderContext> {
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const page = await openPage();
 
   const paper = getPaperDimensionsMm(params.paperSize, params.orientation);
   const contentWidthMm = paper.width - params.margins.left - params.margins.right;
@@ -53,7 +53,7 @@ export async function createRenderContext(
   await page.goto(`file://${tempFilePath}`, { waitUntil: 'domcontentloaded' });
   await renderMermaidDiagrams(page);
 
-  return { browser, page, tempFilePath };
+  return { page, tempFilePath };
 }
 
 function wrapHtml(
@@ -185,7 +185,8 @@ export async function renderPdfAndCountPages(
 }
 
 export async function closeRenderContext(ctx: RenderContext): Promise<void> {
-  await ctx.browser.close();
+  // 只关 page，共享浏览器保持温热（生命周期归 browser-pool 管）
+  await ctx.page.close();
   await fs.unlink(ctx.tempFilePath).catch(() => {
     // 临时文件清理失败不影响主流程
   });

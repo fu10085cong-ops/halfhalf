@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { searchOptimalFontSize } from '../src/engine/binary-search.js';
+import { closeSharedBrowser } from '../src/engine/browser-pool.js';
 import { DEFAULT_MARGINS, type Columns, type Orientation } from '../src/types/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,7 +75,10 @@ async function main() {
   console.log(`  PDF 输出: ${outputPath}`);
 }
 
-main().catch((err) => {
-  console.error('[run-fixture] 失败:', err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error('[run-fixture] 失败:', err);
+    process.exitCode = 1;
+  })
+  // 流式引擎现在也走共享浏览器，不关掉子进程会拖住 Node 不退出
+  .finally(() => closeSharedBrowser());

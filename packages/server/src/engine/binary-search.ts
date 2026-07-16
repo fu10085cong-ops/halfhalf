@@ -101,15 +101,25 @@ async function binarySearchFontSize(
   const lowProbe = await probe(lo);
   let best = { fontSize: lo, pages: lowProbe.pageCount, pdfBuffer: lowProbe.pdfBuffer };
 
+  // 精度钳到 0.5pt 网格步长：mid 吸附在 0.5 网格上，precision 比网格细时区间收缩到
+  // 0.5 后 mid 会四舍五入成 hi，同一字号被反复探测直到迭代上限耗尽
+  const precision = Math.max(params.precision, 0.5);
+
   if (lowProbe.pageCount <= params.targetPages) {
-    while (hi - lo > params.precision && iterations < SEARCH_CONFIG.maxIterations) {
-      const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐到 0.5pt 网格
-      const p = await probe(mid);
-      if (p.pageCount <= params.targetPages) {
-        best = { fontSize: mid, pages: p.pageCount, pdfBuffer: p.pdfBuffer };
-        lo = mid;
-      } else {
-        hi = mid;
+    // 先探上界：mid 吸附在网格上永远取不到 hi 本身，内容很少时 24pt 直接命中就不用再搜
+    const highProbe = await probe(hi);
+    if (highProbe.pageCount <= params.targetPages) {
+      best = { fontSize: hi, pages: highProbe.pageCount, pdfBuffer: highProbe.pdfBuffer };
+    } else {
+      while (hi - lo > precision && iterations < SEARCH_CONFIG.maxIterations) {
+        const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐到 0.5pt 网格
+        const p = await probe(mid);
+        if (p.pageCount <= params.targetPages) {
+          best = { fontSize: mid, pages: p.pageCount, pdfBuffer: p.pdfBuffer };
+          lo = mid;
+        } else {
+          hi = mid;
+        }
       }
     }
   }

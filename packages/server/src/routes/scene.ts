@@ -30,6 +30,8 @@ interface SceneRequest {
   /** 'auto'（默认）= 按内容特征推荐；也可指定四个预设之一 */
   scene?: SceneId | 'auto';
   orientation?: ResolvedOrientation;
+  /** true = PDF 上叠加网格线/块方框/标签，用于目视检查排版（不改变排版本身） */
+  debug?: boolean;
 }
 
 function validate(body: SceneRequest): string | null {
@@ -99,11 +101,14 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         margins: DEFAULT_MARGINS,
         fontSize: best.fontSize,
         density: preset.density,
+        debug: body.debug === true,
       }
     );
 
     const jobId = randomUUID();
-    const fileName = derivePdfName(body.markdown);
+    // 调试版单独命名，免得和正式版下载到同一个文件名互相覆盖
+    const baseName = derivePdfName(body.markdown);
+    const fileName = body.debug ? baseName.replace(/\.pdf$/, '-网格.pdf') : baseName;
     saveJob(jobId, pdfBuffer, fileName);
 
     res.json({
@@ -113,12 +118,16 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         scene: recommended.scene,
         name: SCENE_PRESETS[recommended.scene].name,
         reason: recommended.reason,
+        // 多类刚性原子冲突时的取舍提示（如"图+公式"材料优先保了公式）
+        warning: recommended.warning,
       },
       usedScene,
       usedSceneName: preset.name,
       fontSize: best.fontSize,
       pages: pageCount,
-      withinTargetPages: outcome.withinTargetPages,
+      // 用实测 PDF 页数判定，而不是搜索阶段的拼装估算——两者不一致时（如渲染尾部
+      // 多出一页）估算口径会出现"达标 ✓ 但 pages > targetPages"的自相矛盾响应
+      withinTargetPages: pageCount <= targetPages,
       history: outcome.history,
       warnings: {
         oversized: best.oversized,

@@ -104,6 +104,7 @@ export default function ParameterPanel({
             <option value="compact">紧凑 (行高 1.05)</option>
             <option value="normal">正常 (行高 1.15)</option>
             <option value="loose">宽松 (行高 1.3)</option>
+            <option value="cram">极限 (行高 1.0，标题行内化)</option>
           </select>
         </div>
       </div>

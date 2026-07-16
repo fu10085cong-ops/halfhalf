@@ -44,7 +44,7 @@ export interface OptimizeResult {
 }
 
 /** 场景预设 id（POST /api/scene） */
-export type SceneId = 'text-cram' | 'formula' | 'visual' | 'balanced';
+export type SceneId = 'text-cram' | 'formula' | 'code' | 'visual' | 'balanced';
 
 export interface SceneRequest {
   markdown: string;
@@ -52,6 +52,8 @@ export interface SceneRequest {
   /** 'auto'（默认）= 按内容特征推荐 */
   scene?: SceneId | 'auto';
   orientation?: ResolvedOrientation;
+  /** true = PDF 叠加网格线/块方框/标签，用于看清排版（不改变排版本身） */
+  debug?: boolean;
 }
 
 export interface SceneStats {
@@ -60,6 +62,7 @@ export interface SceneStats {
   inlineFormulaCount: number;
   imageBlockCount: number;
   tableCount: number;
+  codeBlockCount: number;
   blockCount: number;
 }
 
@@ -67,7 +70,7 @@ export interface SceneResult {
   /** 自动从内容标题派生的下载文件名（含 .pdf） */
   fileName: string;
   stats: SceneStats;
-  recommended: { scene: SceneId; name: string; reason: string };
+  recommended: { scene: SceneId; name: string; reason: string; warning?: string };
   usedScene: SceneId;
   usedSceneName: string;
   fontSize: number;

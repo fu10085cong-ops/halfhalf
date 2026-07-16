@@ -75,6 +75,12 @@ export interface MeasureOptions {
   maxAspect?: number;
   /** 本地图片解析基准目录，透传给 markdownToHtml 做 base64 内嵌 */
   imageBaseDir?: string;
+  /**
+   * 预转换的块 HTML（key = 块 id）。块的 HTML 与字号无关（字号是 CSS 变量），
+   * 字号搜索的调用方应在循环外转一次传进来，免得每轮试探重跑 KaTeX/Shiki；
+   * 不给则本次调用现转（单次测量的场景）。
+   */
+  htmlById?: Map<string, string>;
 }
 
 /**
@@ -102,7 +108,9 @@ export async function measureBlocks(
   // 每块渲染每个候选档位一个容器；mermaid 占位 id 按 (块, span) 唯一化避免撞车
   const containers: string[] = [];
   for (const b of blocks) {
-    const { html } = await markdownToHtml(b.markdown, { imageBaseDir: options.imageBaseDir });
+    const html =
+      options.htmlById?.get(b.id) ??
+      (await markdownToHtml(b.markdown, { imageBaseDir: options.imageBaseDir })).html;
     for (const c of candidates) {
       const uniqueHtml = uniquifyMermaidIds(html, `${b.id}-s${c.span}`);
       containers.push(

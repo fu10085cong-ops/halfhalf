@@ -30,6 +30,15 @@ export async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * 在共享浏览器上开一个由调用方管理生命周期的 page——用于跨多次调用复用同一页面的
+ * 长会话场景（如二分搜索的渲染上下文）。调用方用完必须自行 page.close()。
+ */
+export async function openPage(): Promise<Page> {
+  const browser = await getSharedBrowser();
+  return browser.newPage();
+}
+
 /** 关闭共享浏览器。脚本收尾/服务下线时调用，否则子进程会拖住 Node 不退出 */
 export async function closeSharedBrowser(): Promise<void> {
   if (!browserPromise) return;

@@ -56,6 +56,8 @@ aiRouter.post('/ai/proxy', async (req: Request, res: Response) => {
         ...(headers || {}),
       },
       body: JSON.stringify(body ?? {}),
+      // 上游挂起时不能让这个请求悬死；60s 足够覆盖长文生成
+      signal: AbortSignal.timeout(60_000),
     });
 
     const contentType = upstream.headers.get('content-type') || 'application/json';
@@ -65,6 +67,11 @@ aiRouter.post('/ai/proxy', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', contentType);
     res.send(text);
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      const response: ApiErrorResponse = { error: '转发失败: 上游响应超时（60s）' };
+      res.status(504).json(response);
+      return;
+    }
     const message = error instanceof Error ? error.message : '未知错误';
     const response: ApiErrorResponse = { error: `转发失败: ${message}` };
     res.status(502).json(response);

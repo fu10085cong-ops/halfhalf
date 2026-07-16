@@ -30,6 +30,13 @@ export interface ContentBlock {
 
 const ATX_HEADING = /^(#{1,6})\s+(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
+
+/** 匹配围栏开关行，返回记号；非围栏行返回 null。开关必须同记号配对——
+ *  ~~~ 围栏里的 ``` 行只是内容（讲 Markdown 本身的笔记会出现），不能翻转开关 */
+function fenceMarker(line: string): '```' | '~~~' | null {
+  const m = line.match(FENCE);
+  return m ? (m[1] as '```' | '~~~') : null;
+}
 /** 一行只有一张图：![alt](src) 或带 title 的 ![alt](src "t")，允许首尾空白 */
 const STANDALONE_IMAGE = /^\s*!\[([^\]]*)\]\(\S+(?:\s+"[^"]*")?\)\s*$/;
 
@@ -78,13 +85,14 @@ function isHeadingOnly(markdown: string): boolean {
 
 /** 块内是否存在比 level 更深的标题（围栏内不算）——有才值得降级细分 */
 function hasDeeperHeading(markdown: string, level: number): boolean {
-  let inFence = false;
+  let openFence: '```' | '~~~' | null = null;
   for (const line of markdown.split('\n')) {
-    if (FENCE.test(line)) {
-      inFence = !inFence;
+    const marker = fenceMarker(line);
+    if (marker && (openFence === null || openFence === marker)) {
+      openFence = openFence === null ? marker : null;
       continue;
     }
-    if (inFence) continue;
+    if (openFence) continue;
     const m = line.match(ATX_HEADING);
     if (m && m[1].length > level) return true;
   }
@@ -113,7 +121,7 @@ function chunkOnce(markdown: string, splitLevel: number): ContentBlock[] {
 
   const blocks: ContentBlock[] = [];
   let current: { level: number; title: string; lines: string[] } | null = null;
-  let inFence = false;
+  let openFence: '```' | '~~~' | null = null;
 
   const flush = () => {
     if (!current) return;
@@ -130,15 +138,16 @@ function chunkOnce(markdown: string, splitLevel: number): ContentBlock[] {
   };
 
   for (const line of lines) {
-    // 先处理围栏开关：围栏行本身不参与标题/图片判断
-    if (FENCE.test(line)) {
-      inFence = !inFence;
+    // 先处理围栏开关（同记号配对）：围栏行本身不参与标题/图片判断
+    const marker = fenceMarker(line);
+    if (marker && (openFence === null || openFence === marker)) {
+      openFence = openFence === null ? marker : null;
       if (current === null) current = { level: 0, title: '', lines: [] };
       current.lines.push(line);
       continue;
     }
 
-    if (!inFence) {
+    if (openFence === null) {
       const m = line.match(ATX_HEADING);
       if (m && m[1].length <= splitLevel) {
         // 遇到分块级标题：结束上一块，开启新块

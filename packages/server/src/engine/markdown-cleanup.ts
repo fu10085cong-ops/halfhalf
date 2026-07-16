@@ -23,15 +23,18 @@ const LANG_ALIASES: Record<string, BundledLanguage> = {
   htm: 'html',
 };
 
+/** 围栏代码块（与 pdf-name.ts / scene-presets.ts 同一模式）。清理前整体摘出：
+ *  空行、行尾空白、`* ` 开头的行（JSDoc 注释）在代码里都是内容本身，不能清理 */
+const FENCE_RE = /```[\s\S]*?```|~~~[\s\S]*?~~~/g;
+
 /** 把多余的空行折叠成最多一行空行，减少无意义的垂直空间浪费 */
 function collapseBlankLines(markdown: string): string {
   return markdown.replace(/\n{3,}/g, '\n\n');
 }
 
-/** 统一换行符、去掉行尾多余空格 */
-function normalizeWhitespace(markdown: string): string {
+/** 去掉行尾多余空格（换行符统一在 cleanupMarkdown 里做，围栏内外都安全） */
+function stripTrailingWhitespace(markdown: string): string {
   return markdown
-    .replace(/\r\n/g, '\n')
     .split('\n')
     .map((line) => line.replace(/[ \t]+$/, ''))
     .join('\n');
@@ -75,11 +78,24 @@ const DEFAULT_OPTIONS: Required<CleanupOptions> = {
 export function cleanupMarkdown(markdown: string, options?: CleanupOptions): string {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
-  let result = markdown;
-  if (opts.normalizeWhitespace) result = normalizeWhitespace(result);
-  if (opts.normalizeCodeFenceLang) result = normalizeCodeFenceLang(result);
+  // 换行符统一对围栏内外都是无损的，放在摘围栏之前做
+  let result = opts.normalizeWhitespace ? markdown.replace(/\r\n/g, '\n') : markdown;
+
+  // 围栏摘出换占位符（NUL 定界：用户文本里不会出现，也不会被行尾空白清理误伤），
+  // 清理只作用于正文，最后原样回填
+  const fences: string[] = [];
+  result = result.replace(FENCE_RE, (block) => {
+    fences.push(block);
+    return `\u0000hh-fence-${fences.length - 1}\u0000`;
+  });
+
+  if (opts.normalizeWhitespace) result = stripTrailingWhitespace(result);
   if (opts.normalizeListMarkers) result = normalizeListMarkers(result);
   if (opts.collapseBlankLines) result = collapseBlankLines(result);
+
+  result = result.replace(/\u0000hh-fence-(\d+)\u0000/g, (_m, i: string) => fences[Number(i)]);
+  // 语言标注归一化只碰 ```lang 围栏行自己，不碰围栏内容，回填后做
+  if (opts.normalizeCodeFenceLang) result = normalizeCodeFenceLang(result);
 
   return result;
 }

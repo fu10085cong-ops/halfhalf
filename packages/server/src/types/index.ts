@@ -5,7 +5,7 @@ export type PaperSize = 'A4' | 'A5' | 'Letter';
  *  标题行内化（不放大、不独占空间），重点靠粗体承担扫读 */
 export type Density = 'compact' | 'normal' | 'loose' | 'cram';
 
-/** 纸张方向。'auto' 会并行试竖版和横版两轮完整搜索，取字号更大的结果——总耗时不明显增加，但峰值内存/CPU 占用接近翻倍（两个 Chromium 实例同时跑） */
+/** 纸张方向。'auto' 会并行试竖版和横版两轮完整搜索，取字号更大的结果——总耗时不明显增加，但峰值内存/CPU 占用接近翻倍（共享 Chromium 上两个 page 同时渲染） */
 export type Orientation = 'portrait' | 'landscape' | 'auto';
 
 /** 单次搜索实际采用的纸张方向（'auto' 只是请求参数，落到具体某一轮搜索时一定是这两者之一） */

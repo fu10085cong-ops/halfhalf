@@ -1,11 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import type {
   ApiErrorResponse,
   IterationRecord,
+  Margins,
   OptimizeRequest,
   OptimizeResult,
+  Orientation,
+  PaperSize,
   RenderPreviewRequest,
+  ResolvedOrientation,
 } from '../types/index.js';
 import { DEFAULT_MARGINS, DENSITY_CONFIG, PAPER_SIZES, SEARCH_CONFIG } from '../types/index.js';
 import { searchOptimalFontSize } from '../engine/binary-search.js';
@@ -28,6 +32,35 @@ const VALID_ORIENTATIONS = new Set(['portrait', 'landscape', 'auto']);
 const VALID_PREVIEW_ORIENTATIONS = new Set(['portrait', 'landscape']);
 /** 显式指定固定栏数时的上限，防止传入荒谬的大值把每栏挤到没意义 */
 const MAX_EXPLICIT_COLUMNS = 12;
+
+/**
+ * 校验 margins：每个给出的字段必须是 >= 0 的数字（没给的字段走 DEFAULT_MARGINS，
+ * 所以允许只传部分边距），且与默认值合并后不能吞掉整张纸——任一实际使用方向下
+ * 内容区宽高都必须为正，否则负宽度会一路带进渲染引擎才以晦涩错误暴露。
+ */
+function validateMargins(
+  margins: Partial<Margins>,
+  paperSize: PaperSize,
+  orientation: Orientation
+): string | null {
+  const given = [margins.top, margins.bottom, margins.left, margins.right];
+  if (given.some((v) => v !== undefined && (typeof v !== 'number' || v < 0))) {
+    return 'margins 的 top/bottom/left/right 必须都是 >= 0 的数字';
+  }
+
+  const merged = { ...DEFAULT_MARGINS, ...margins };
+  const paper = PAPER_SIZES[paperSize];
+  const orientations: ResolvedOrientation[] =
+    orientation === 'auto' ? ['portrait', 'landscape'] : [orientation];
+  for (const o of orientations) {
+    const w = o === 'landscape' ? paper.height : paper.width;
+    const h = o === 'landscape' ? paper.width : paper.height;
+    if (merged.left + merged.right >= w || merged.top + merged.bottom >= h) {
+      return `margins 过大：${paperSize} ${o === 'landscape' ? '横版' : '竖版'}下没有剩余内容区`;
+    }
+  }
+  return null;
+}
 
 /** 校验固定栏数（正整数且不超过上限）。返回错误信息或 null */
 function validateFixedColumns(columns: unknown): string | null {
@@ -70,11 +103,12 @@ function validateOptimizeRequest(body: OptimizeRequest): string | null {
     return 'precision 必须是大于 0 的数字';
   }
   if (body.margins !== undefined) {
-    const { top, bottom, left, right } = body.margins;
-    const values = [top, bottom, left, right];
-    if (values.some((v) => typeof v !== 'number' || v < 0)) {
-      return 'margins 的 top/bottom/left/right 必须都是 >= 0 的数字';
-    }
+    const marginsError = validateMargins(
+      body.margins,
+      body.paperSize || 'A4',
+      body.orientation || 'portrait'
+    );
+    if (marginsError) return marginsError;
   }
   return null;
 }
@@ -123,7 +157,7 @@ optimizeRouter.post('/optimize', async (req: Request, res: Response) => {
       sendEvent('progress', record);
     });
 
-    const jobId = uuidv4();
+    const jobId = randomUUID();
     saveJob(jobId, outcome.pdfBuffer, derivePdfName(params.markdown));
 
     const result: OptimizeResult = {
@@ -179,11 +213,12 @@ function validateRenderRequest(body: RenderPreviewRequest): string | null {
     if (columnsError) return columnsError;
   }
   if (body.margins !== undefined) {
-    const { top, bottom, left, right } = body.margins;
-    const values = [top, bottom, left, right];
-    if (values.some((v) => typeof v !== 'number' || v < 0)) {
-      return 'margins 的 top/bottom/left/right 必须都是 >= 0 的数字';
-    }
+    const marginsError = validateMargins(
+      body.margins,
+      body.paperSize || 'A4',
+      body.orientation || 'portrait'
+    );
+    if (marginsError) return marginsError;
   }
   return null;
 }

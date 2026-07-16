@@ -14,6 +14,7 @@ import type {
 } from '../types/index.js';
 import { PAPER_SIZES, SEARCH_CONFIG } from '../types/index.js';
 import { chunkMarkdown, type ContentBlock } from './chunk-markdown.js';
+import { markdownToHtml } from './md-to-html.js';
 import { measureBlocks, PX_PER_MM, type BlockMeasurement } from './measure-blocks.js';
 import { packBlocks, type PackStrategy, type Placement } from './pack-blocks.js';
 
@@ -80,6 +81,13 @@ export async function searchLayoutFontSize(
     gapMm: params.blockGapMm,
   };
 
+  // 块的 HTML 与字号无关（字号是 CSS 变量），循环外转一次，免得每轮试探重跑 KaTeX/Shiki
+  const htmlById = new Map<string, string>();
+  for (const b of blocks) {
+    const { html } = await markdownToHtml(b.markdown, { imageBaseDir: params.imageBaseDir });
+    htmlById.set(b.id, html);
+  }
+
   const trial = async (fontSize: number): Promise<LayoutTrial> => {
     const measurements = await measureBlocks(blocks, {
       columnWidthPx: colWidthMm * PX_PER_MM,
@@ -88,7 +96,7 @@ export async function searchLayoutFontSize(
       fontSize,
       density: params.density,
       minScale: params.minScale,
-      imageBaseDir: params.imageBaseDir,
+      htmlById,
     });
     const packResult = packBlocks(
       measurements.map((m) => ({ id: m.id, heightMm: m.heightPx / PX_PER_MM, span: m.span })),
@@ -105,7 +113,9 @@ export async function searchLayoutFontSize(
     };
   };
 
-  const precision = params.precision ?? SEARCH_CONFIG.defaultPrecision;
+  // 精度钳到 0.5pt 网格步长：mid 吸附在 0.5 网格上，precision 比网格细时区间收缩到
+  // 0.5 后 mid 会四舍五入成 hi——hi 侧探测失败时区间不再收缩，循环永不终止
+  const precision = Math.max(params.precision ?? SEARCH_CONFIG.defaultPrecision, 0.5);
   const history: { fontSize: number; pages: number }[] = [];
   const record = (t: LayoutTrial) => {
     history.push({ fontSize: t.fontSize, pages: t.pages });
@@ -122,15 +132,23 @@ export async function searchLayoutFontSize(
   let best = lowTrial;
 
   if (lowTrial.pages <= params.targetPages) {
-    while (hi - lo > precision) {
-      const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐 0.5pt
-      const t = await trial(mid);
-      record(t);
-      if (t.pages <= params.targetPages) {
-        best = t; // 页数达标，记录并尝试更大字号
-        lo = mid;
-      } else {
-        hi = mid;
+    // 先探上界：mid 吸附在网格上永远取不到 hi 本身，内容很少时 24pt 直接命中就不用再搜
+    const highTrial = await trial(hi);
+    record(highTrial);
+    if (highTrial.pages <= params.targetPages) {
+      best = highTrial;
+    } else {
+      // maxIterations 是防御性兜底（精度钳制后区间每轮至少缩 0.5pt，正常几轮就收敛）
+      while (hi - lo > precision && history.length < SEARCH_CONFIG.maxIterations) {
+        const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐 0.5pt
+        const t = await trial(mid);
+        record(t);
+        if (t.pages <= params.targetPages) {
+          best = t; // 页数达标，记录并尝试更大字号
+          lo = mid;
+        } else {
+          hi = mid;
+        }
       }
     }
   }

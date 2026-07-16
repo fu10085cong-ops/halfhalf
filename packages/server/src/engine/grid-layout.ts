@@ -15,6 +15,7 @@
 import type { Density, Margins, PaperSize, ResolvedOrientation } from '../types/index.js';
 import { PAPER_SIZES, SEARCH_CONFIG } from '../types/index.js';
 import { chunkMarkdown, type ContentBlock } from './chunk-markdown.js';
+import { markdownToHtml } from './md-to-html.js';
 import {
   measureBlocks,
   PX_PER_MM,
@@ -162,9 +163,15 @@ export async function renderGridPdf(
   blocks: ContentBlock[],
   placements: Placement[],
   grid: GridSpec,
-  opts: RectRenderOptions
+  /** debug: 画出网格线 + 块方框 + 标签（叠加层不参与布局，排版与正式版一致） */
+  opts: RectRenderOptions & { debug?: boolean }
 ): Promise<{ pdfBuffer: Buffer; pageCount: number }> {
-  return renderRectsPdf(blocks, gridPlacementsToRects(placements, grid), opts);
+  return renderRectsPdf(blocks, gridPlacementsToRects(placements, grid), {
+    ...opts,
+    overlay: opts.debug
+      ? { unitMm: grid.unitMm, unitsX: grid.unitsX, gutterMm: grid.gutterMm }
+      : undefined,
+  });
 }
 
 export async function searchGridFontSize(
@@ -182,6 +189,13 @@ export async function searchGridFontSize(
 
   const geo = { columnHeightMm: contentHMm, columnsPerPage: grid.unitsX, gapMm: 0 };
 
+  // 块的 HTML 与字号无关（字号是 CSS 变量），循环外转一次，免得每轮试探重跑 KaTeX/Shiki
+  const htmlById = new Map<string, string>();
+  for (const b of blocks) {
+    const { html } = await markdownToHtml(b.markdown, { imageBaseDir: params.imageBaseDir });
+    htmlById.set(b.id, html);
+  }
+
   const trial = async (fontSize: number): Promise<GridTrial> => {
     const measurements = await measureBlocks(blocks, {
       candidates,
@@ -189,7 +203,7 @@ export async function searchGridFontSize(
       density: params.density,
       minScale: params.minScale,
       maxAspect: params.maxAspect ?? GRID_DEFAULTS.maxAspect,
-      imageBaseDir: params.imageBaseDir,
+      htmlById,
     });
     // 盒高 = 内容高 + gutter，不再向上取整到格线：取整曾让每块最多白扔一格（约 8mm），
     // 实测 19 块的材料因此膨胀 16%、硬生生多出一页。取整只买到"块顶边落在格线上"的
@@ -214,7 +228,9 @@ export async function searchGridFontSize(
     };
   };
 
-  const precision = params.precision ?? SEARCH_CONFIG.defaultPrecision;
+  // 精度钳到 0.5pt 网格步长：mid 吸附在 0.5 网格上，precision 比网格细时区间收缩到
+  // 0.5 后 mid 会四舍五入成 hi——hi 侧探测失败时区间不再收缩，循环永不终止
+  const precision = Math.max(params.precision ?? SEARCH_CONFIG.defaultPrecision, 0.5);
   const history: { fontSize: number; pages: number }[] = [];
   const record = (t: GridTrial) => {
     history.push({ fontSize: t.fontSize, pages: t.pages });
@@ -231,15 +247,23 @@ export async function searchGridFontSize(
   let best = lowTrial;
 
   if (lowTrial.pages <= params.targetPages) {
-    while (hi - lo > precision) {
-      const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐 0.5pt
-      const t = await trial(mid);
-      record(t);
-      if (t.pages <= params.targetPages) {
-        best = t; // 页数达标，记录并尝试更大字号
-        lo = mid;
-      } else {
-        hi = mid;
+    // 先探上界：mid 吸附在网格上永远取不到 hi 本身，内容很少时 24pt 直接命中就不用再搜
+    const highTrial = await trial(hi);
+    record(highTrial);
+    if (highTrial.pages <= params.targetPages) {
+      best = highTrial;
+    } else {
+      // maxIterations 是防御性兜底（精度钳制后区间每轮至少缩 0.5pt，正常几轮就收敛）
+      while (hi - lo > precision && history.length < SEARCH_CONFIG.maxIterations) {
+        const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐 0.5pt
+        const t = await trial(mid);
+        record(t);
+        if (t.pages <= params.targetPages) {
+          best = t; // 页数达标，记录并尝试更大字号
+          lo = mid;
+        } else {
+          hi = mid;
+        }
       }
     }
   }
