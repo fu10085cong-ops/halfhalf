@@ -56,6 +56,7 @@ export default function ScenePanel() {
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [debug, setDebug] = useState(false);
+  const [allowReorder, setAllowReorder] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SceneResult | null>(null);
@@ -85,7 +86,7 @@ export default function ScenePanel() {
       const resp = await fetch('/api/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown, targetPages, scene, orientation, debug }),
+        body: JSON.stringify({ markdown, targetPages, scene, orientation, debug, allowReorder }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -173,6 +174,14 @@ export default function ScenePanel() {
               onChange={(e) => setDebug(e.target.checked)}
             />
             显示网格
+          </label>
+          <label title="要点式材料（如政治「一问几面」）顺序打乱几乎无代价，勾选后允许后面的内容填进前面页的空隙，更省纸。推导/教程类材料（数学、代码）不建议勾选">
+            <input
+              type="checkbox"
+              checked={allowReorder}
+              onChange={(e) => setAllowReorder(e.target.checked)}
+            />
+            允许乱序换密度
           </label>
           <button onClick={() => fileInputRef.current?.click()}>插入图片</button>
           <input

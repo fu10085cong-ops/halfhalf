@@ -32,6 +32,12 @@ interface SceneRequest {
   orientation?: ResolvedOrientation;
   /** true = PDF 上叠加网格线/块方框/标签，用于目视检查排版（不改变排版本身） */
   debug?: boolean;
+  /**
+   * true = 用户声明「内容顺序可打乱」（RULES.md S2 的用户声明入口）：
+   * 开启跨页回填——后面的块可以填进前面页的缺口，牺牲跨页阅读顺序换密度。
+   * 默认 false（力学层保守假定顺序刚性强）。
+   */
+  allowReorder?: boolean;
 }
 
 function validate(body: SceneRequest): string | null {
@@ -88,6 +94,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       maxAspect: preset.maxAspect,
       gutterMm: preset.gutterMm,
       widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
+      backfill: body.allowReorder === true,
     });
     const { best } = outcome;
 

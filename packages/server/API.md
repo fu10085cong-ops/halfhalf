@@ -35,6 +35,54 @@ interface ApiErrorResponse {
 
 ---
 
+## `POST /api/scene`
+
+场景排版一站式接口（网格引擎，ScenePanel 用的就是它）：分块 → 内容统计 → 场景推荐（或用户指定）
+→ 公式预检 → 网格字号搜索 → 渲染 PDF 存进 job-store。图片以 data: URI 直接内嵌在 Markdown 里
+（前端粘贴/上传时转好），不走服务器文件路径。
+
+### 请求 body
+
+```ts
+interface SceneRequest {
+  markdown: string;      // 必填，非空
+  targetPages?: number;  // 1~50 的整数，默认 1
+  scene?: 'auto' | 'text-cram' | 'formula' | 'code' | 'visual' | 'balanced';  // 默认 'auto'（按内容特征推荐）
+  orientation?: 'portrait' | 'landscape';  // 默认 'portrait'
+  debug?: boolean;       // true = PDF 叠加网格线/块方框/标签（排版本身不变，文件名加「-网格」后缀）
+  allowReorder?: boolean; // true = 用户声明「内容顺序可打乱」（RULES.md S2）：开启跨页回填，
+                          // 后面的块可填进前面页的缺口换密度；默认 false（保守假定顺序刚性强）
+}
+```
+
+### 响应 `200`
+
+```ts
+{
+  fileName: string;           // 按文档首个标题自动命名的 PDF 文件名
+  stats: ContentStats;        // charCount / displayFormulaCount / inlineFormulaCount /
+                              // imageBlockCount / tableCount / codeBlockCount / blockCount
+  recommended: {
+    scene: SceneId; name: string; reason: string;
+    warning?: string;         // 多类刚性原子冲突时的取舍提示（如"图+公式"优先保了公式）
+  };
+  usedScene: SceneId;         // 实际使用的场景（用户指定则以用户为准）
+  usedSceneName: string;
+  fontSize: number;           // 搜出的最优字号 pt
+  pages: number;              // 实测 PDF 页数
+  withinTargetPages: boolean; // 按实测页数判定是否达标
+  history: { fontSize: number; pages: number }[];  // 二分搜索轨迹
+  warnings: {
+    oversized: string[];      // 比整页还高、会被截断的块 id
+    cramped: string[];        // 跨满最大档仍需缩到可读下限以下的块 id
+    formulaIssues: { blockId: string; blockTitle: string; message: string }[];  // KaTeX 预检错误
+  };
+  jobId: string;              // 拿去 GET /api/download/:jobId/pdf
+}
+```
+
+---
+
 ## `POST /api/optimize`（SSE 流式）
 
 核心接口：提交 Markdown 和排版参数，服务端二分搜索最佳字号，用 SSE 流式返回搜索过程和最终结果。

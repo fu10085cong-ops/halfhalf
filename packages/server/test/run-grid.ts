@@ -5,7 +5,8 @@
  *
  * 用法：
  *   cd packages/server
- *   npx tsx test/run-grid.ts [文件名] [目标页数] [orientation] [strategy] [minScale] [maxAspect] [density] [gutterMm]
+ *   npx tsx test/run-grid.ts [文件名] [目标页数] [orientation] [strategy] [minScale] [maxAspect] [density] [gutterMm] [pack]
+ *   pack：拼装补丁开关——norepack（关页内换位，复现老行为）/ backfill（额外开跨页回填）；默认只开页内换位
  *   maxAspect：文字块最大高宽比（默认 2）。调大 → 更多块挤窄档（趋向等宽栏）；调小 → 更多宽卡
  *   density：compact/normal/loose/cram（cram = 极限密度，分隔靠发丝线不靠留白）
  *   gutterMm：块间留白 mm（默认 1 格宽 ≈7.9；cram 建议 2~3）
@@ -41,6 +42,7 @@ async function main() {
   const maxAspect = process.argv[7] ? Number(process.argv[7]) : undefined;
   const density = (process.argv[8] || 'normal') as GridSearchParams['density'];
   const gutterMm = process.argv[9] ? Number(process.argv[9]) : undefined;
+  const pack = process.argv[10]; // norepack | backfill | 缺省
   const fixturesDir = path.join(__dirname, 'fixtures');
   const markdown = readFileSync(path.join(fixturesDir, fileName), 'utf-8');
 
@@ -55,6 +57,8 @@ async function main() {
     minScale,
     maxAspect,
     gutterMm,
+    repack: pack === 'norepack' ? false : undefined,
+    backfill: pack === 'backfill' ? true : undefined,
     imageBaseDir: fixturesDir,
   };
 

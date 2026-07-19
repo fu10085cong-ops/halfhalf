@@ -84,6 +84,10 @@ export interface GridSearchParams {
   widthTiers?: number[];
   /** 文字块最大高宽比，默认 2；调大则更多块挤最窄档（趋向等宽栏），调小则更多块升宽档 */
   maxAspect?: number;
+  /** 页内换位：块卡住时整页重排再试，默认 true（见 pack-blocks 头注释） */
+  repack?: boolean;
+  /** 跨页回填：牺牲跨页阅读顺序换密度，默认 false——顺序刚性弱（S2）才该开 */
+  backfill?: boolean;
   /** 字号搜索精度 pt，默认取 SEARCH_CONFIG.defaultPrecision */
   precision?: number;
   /** 本地图片解析基准目录，透传做 base64 内嵌 */
@@ -216,7 +220,8 @@ export async function searchGridFontSize(
         span: m.span,
       })),
       geo,
-      params.strategy
+      params.strategy,
+      { repack: params.repack, backfill: params.backfill }
     );
     return {
       fontSize,
