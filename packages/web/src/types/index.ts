@@ -71,6 +71,12 @@ export interface SceneResult {
   fileName: string;
   stats: SceneStats;
   recommended: { scene: SceneId; name: string; reason: string; warning?: string };
+  /** rule trace：实际触发的排版规则记账（H=硬约束，S=软偏好），自动模式的参数由它决定 */
+  trace: { rule: string; kind: 'hard' | 'soft'; detail: string }[];
+  /** 用户声明的学科 id（null = 未声明） */
+  subject: string | null;
+  /** 关键词识别建议（≠ 声明，用户选了才生效） */
+  subjectSuggestion: { id: string; name: string; matchedAliases: string[] } | null;
   usedScene: SceneId;
   usedSceneName: string;
   fontSize: number;

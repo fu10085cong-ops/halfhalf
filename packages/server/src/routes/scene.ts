@@ -11,12 +11,9 @@ import { randomUUID } from 'node:crypto';
 import type { ApiErrorResponse, ResolvedOrientation } from '../types/index.js';
 import { DEFAULT_MARGINS } from '../types/index.js';
 import { chunkMarkdown } from '../engine/chunk-markdown.js';
-import {
-  SCENE_PRESETS,
-  analyzeContent,
-  recommendScene,
-  type SceneId,
-} from '../engine/scene-presets.js';
+import { SCENE_PRESETS, analyzeContent, type SceneId } from '../engine/scene-presets.js';
+import { deriveLayoutParams } from '../engine/rule-engine.js';
+import { SUBJECT_RULES, suggestSubject } from '../engine/subject-rules.js';
 import { renderGridPdf, searchGridFontSize } from '../engine/grid-layout.js';
 import { precheckFormulas } from '../engine/precheck-formulas.js';
 import { derivePdfName } from '../engine/pdf-name.js';
@@ -38,6 +35,12 @@ interface SceneRequest {
    * 默认 false（力学层保守假定顺序刚性强）。
    */
   allowReorder?: boolean;
+  /**
+   * 用户声明的学科 id（SUBJECT_RULES 的键，如 'calculus' / 'politics'）——学科层补充
+   * 特征的来源：顺序刚性（politics 弱 → 自动开回填）、原子角色（os 表核心 → H3 生效）。
+   * 响应里的 subjectSuggestion 只是关键词识别建议，用户选了才算声明。
+   */
+  subject?: string;
 }
 
 function validate(body: SceneRequest): string | null {
@@ -58,6 +61,9 @@ function validate(body: SceneRequest): string | null {
   ) {
     return 'orientation 必须是 portrait 或 landscape';
   }
+  if (body.subject !== undefined && body.subject !== '' && !SUBJECT_RULES[body.subject]) {
+    return `subject 必须是 ${Object.keys(SUBJECT_RULES).join(' / ')} 之一（或省略）`;
+  }
   return null;
 }
 
@@ -75,10 +81,28 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
   try {
     const blocks = chunkMarkdown(body.markdown);
     const stats = analyzeContent(blocks);
-    const recommended = recommendScene(stats);
-    const usedScene: SceneId =
-      body.scene && body.scene !== 'auto' ? body.scene : recommended.scene;
+    const subject = body.subject ? SUBJECT_RULES[body.subject] : undefined;
+    const derived = deriveLayoutParams(stats, {
+      allowReorder: body.allowReorder === true,
+      subject,
+    });
+
+    // 自动模式用规则引擎的交集参数（多类刚性原子同时保护）；
+    // 用户强制指定预设则以预设为准（预设 = 命名快捷方式，用户的选择就是覆盖）
+    const auto = !body.scene || body.scene === 'auto';
+    const usedScene: SceneId = auto ? derived.sceneEquivalent : (body.scene as SceneId);
     const preset = SCENE_PRESETS[usedScene];
+    const params = auto
+      ? derived.params
+      : {
+          density: preset.density,
+          strategy: preset.strategy,
+          minScale: preset.minScale,
+          maxAspect: preset.maxAspect,
+          gutterMm: preset.gutterMm,
+          widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
+          backfill: body.allowReorder === true,
+        };
 
     const formulaIssues = await precheckFormulas(blocks);
 
@@ -88,13 +112,13 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       paperSize: 'A4',
       orientation,
       margins: DEFAULT_MARGINS,
-      density: preset.density,
-      strategy: preset.strategy,
-      minScale: preset.minScale,
-      maxAspect: preset.maxAspect,
-      gutterMm: preset.gutterMm,
-      widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
-      backfill: body.allowReorder === true,
+      density: params.density,
+      strategy: params.strategy,
+      minScale: params.minScale,
+      maxAspect: params.maxAspect,
+      gutterMm: params.gutterMm,
+      widthTiers: params.widthTiers ? [...params.widthTiers] : undefined,
+      backfill: params.backfill,
     });
     const { best } = outcome;
 
@@ -107,7 +131,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         orientation,
         margins: DEFAULT_MARGINS,
         fontSize: best.fontSize,
-        density: preset.density,
+        density: params.density,
         debug: body.debug === true,
       }
     );
@@ -122,12 +146,18 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       fileName,
       stats,
       recommended: {
-        scene: recommended.scene,
-        name: SCENE_PRESETS[recommended.scene].name,
-        reason: recommended.reason,
-        // 多类刚性原子冲突时的取舍提示（如"图+公式"材料优先保了公式）
-        warning: recommended.warning,
+        scene: derived.sceneEquivalent,
+        name: SCENE_PRESETS[derived.sceneEquivalent].name,
+        reason: derived.reason,
+        // 多类刚性原子并存的提示（保护已同时生效，但空间更紧）
+        warning: derived.warning,
       },
+      // rule trace：实际触发的规则记账（RULES.md §三），自动模式的参数由它决定；
+      // 用户强制预设时 trace 仍返回（说明引擎本来会怎么排），但生效的是预设参数
+      trace: derived.trace,
+      // 学科声明与识别建议（建议 ≠ 声明：前端提示"检测到可能是 X 课"，用户选了才生效）
+      subject: subject?.id ?? null,
+      subjectSuggestion: suggestSubject(body.markdown),
       usedScene,
       usedSceneName: preset.name,
       fontSize: best.fontSize,

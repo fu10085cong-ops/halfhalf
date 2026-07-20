@@ -16,12 +16,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { chunkMarkdown } from '../src/engine/chunk-markdown.js';
-import {
-  SCENE_PRESETS,
-  analyzeContent,
-  recommendScene,
-  type SceneId,
-} from '../src/engine/scene-presets.js';
+import { SCENE_PRESETS, analyzeContent, type SceneId } from '../src/engine/scene-presets.js';
+import { deriveLayoutParams } from '../src/engine/rule-engine.js';
 import { renderGridPdf, searchGridFontSize } from '../src/engine/grid-layout.js';
 import { precheckFormulas } from '../src/engine/precheck-formulas.js';
 import { closeSharedBrowser } from '../src/engine/browser-pool.js';
@@ -40,20 +36,36 @@ async function main() {
   // ① 分块 + 内容统计 + 场景推荐
   const blocks = chunkMarkdown(markdown);
   const stats = analyzeContent(blocks);
-  const rec = recommendScene(stats);
+  const derived = deriveLayoutParams(stats);
   console.log(
     `[run-scene] ${fileName} | 正文≈${stats.charCount}字 独立公式${stats.displayFormulaCount} 行内公式${stats.inlineFormulaCount} 图片块${stats.imageBlockCount} 表格${stats.tableCount} 共${stats.blockCount}块`
   );
-  console.log(`[run-scene] 推荐场景: ${SCENE_PRESETS[rec.scene].name}（${rec.scene}）—— ${rec.reason}`);
+  console.log(
+    `[run-scene] 最接近预设: ${SCENE_PRESETS[derived.sceneEquivalent].name}（${derived.sceneEquivalent}）`
+  );
+  for (const e of derived.trace) console.log(`   [${e.rule}] ${e.detail}`);
+  if (derived.warning) console.log(`   ⚠️ ${derived.warning}`);
 
   if (forcedScene && !SCENE_PRESETS[forcedScene]) {
     throw new Error(`未知场景: ${forcedScene}（可选 ${Object.keys(SCENE_PRESETS).join(' / ')}）`);
   }
-  const preset = SCENE_PRESETS[forcedScene ?? rec.scene];
+  // 自动 = 规则引擎的交集参数；强制 = 预设参数（快捷方式）
+  const preset = SCENE_PRESETS[forcedScene ?? derived.sceneEquivalent];
   if (forcedScene) console.log(`[run-scene] 用户强制: ${preset.name}（${preset.id}）`);
+  const params = forcedScene
+    ? {
+        density: preset.density,
+        strategy: preset.strategy,
+        minScale: preset.minScale,
+        maxAspect: preset.maxAspect,
+        gutterMm: preset.gutterMm,
+        widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
+        backfill: false,
+      }
+    : derived.params;
   console.log(
-    `[run-scene] 预设参数: density=${preset.density} minScale=${preset.minScale} maxAspect=${preset.maxAspect}` +
-      `${preset.gutterMm !== undefined ? ` gutter=${preset.gutterMm}mm` : ''}${preset.widthTiers ? ` tiers=${preset.widthTiers.join('/')}` : ''}`
+    `[run-scene] 生效参数: density=${params.density} minScale=${params.minScale} maxAspect=${params.maxAspect}` +
+      `${params.gutterMm !== undefined ? ` gutter=${params.gutterMm}mm` : ''}${params.widthTiers ? ` tiers=${params.widthTiers.join('/')}` : ''}`
   );
 
   // ② 公式预检
@@ -70,12 +82,13 @@ async function main() {
       paperSize: 'A4',
       orientation: 'portrait',
       margins: DEFAULT_MARGINS,
-      density: preset.density,
-      strategy: preset.strategy,
-      minScale: preset.minScale,
-      maxAspect: preset.maxAspect,
-      gutterMm: preset.gutterMm,
-      widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
+      density: params.density,
+      strategy: params.strategy,
+      minScale: params.minScale,
+      maxAspect: params.maxAspect,
+      gutterMm: params.gutterMm,
+      widthTiers: params.widthTiers ? [...params.widthTiers] : undefined,
+      backfill: params.backfill,
       imageBaseDir: fixturesDir,
     },
     (t) => console.log(`   试 ${t.fontSize}pt → ${t.pages} 页`)
@@ -106,7 +119,7 @@ async function main() {
     orientation: 'portrait',
     margins: DEFAULT_MARGINS,
     fontSize: best.fontSize,
-    density: preset.density,
+    density: params.density,
     imageBaseDir: fixturesDir,
   });
   const outputPath = path.join(fixturesDir, fileName.replace(/\.md$/, '.scene.pdf'));

@@ -16,6 +16,15 @@ const SCENE_OPTIONS: { value: SceneId | 'auto'; label: string }[] = [
   { value: 'balanced', label: '均衡默认' },
 ];
 
+/** 与服务端 SUBJECT_RULES 的键一致；空串 = 不声明学科（只走力学层兜底） */
+const SUBJECT_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '不指定' },
+  { value: 'calculus', label: '微积分/高数' },
+  { value: 'os', label: '操作系统' },
+  { value: 'semiconductor', label: '半导体/电路' },
+  { value: 'politics', label: '政治/毛概/马原' },
+];
+
 const DEFAULT_MD = `# 示例 —— 换成你的复习材料
 
 ## 一、基本概念
@@ -57,6 +66,7 @@ export default function ScenePanel() {
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [debug, setDebug] = useState(false);
   const [allowReorder, setAllowReorder] = useState(false);
+  const [subject, setSubject] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SceneResult | null>(null);
@@ -86,7 +96,15 @@ export default function ScenePanel() {
       const resp = await fetch('/api/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown, targetPages, scene, orientation, debug, allowReorder }),
+        body: JSON.stringify({
+          markdown,
+          targetPages,
+          scene,
+          orientation,
+          debug,
+          allowReorder,
+          subject: subject || undefined,
+        }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -150,6 +168,20 @@ export default function ScenePanel() {
               style={{ marginLeft: 4, maxWidth: 260 }}
             >
               {SCENE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label title="声明这是什么课：政治类会自动允许乱序换密度，操作系统类会保护对比表不被缩小。识别建议只是提示，选了才生效">
+            学科
+            <select
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              style={{ marginLeft: 4 }}
+            >
+              {SUBJECT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -228,13 +260,26 @@ export default function ScenePanel() {
               {result.stats.blockCount}块
             </div>
             <div>
-              推荐场景：<b>{result.recommended.name}</b>（{result.recommended.reason}）
+              推荐场景：<b>{result.recommended.name}</b>
               {result.usedScene !== result.recommended.scene && (
                 <>
                   ；实际使用：<b>{result.usedSceneName}</b>
                 </>
               )}
             </div>
+            {/* 学科识别建议 ≠ 声明：用户在下拉里选了才生效 */}
+            {result.subjectSuggestion && result.subject !== result.subjectSuggestion.id && (
+              <div style={{ color: '#1d4ed8' }}>
+                💡 检测到可能是「{result.subjectSuggestion.name}」（命中：
+                {result.subjectSuggestion.matchedAliases.slice(0, 3).join('、')}）——在学科下拉里选中后重新生成可启用对应规则
+              </div>
+            )}
+            {/* rule trace：自动模式下参数就是这些规则算出来的（用户强制预设时仅供参考） */}
+            {(result.trace ?? []).map((e, i) => (
+              <div key={i} style={{ color: '#555' }}>
+                {e.kind === 'hard' ? '🔒' : '·'} [{e.rule}] {e.detail}
+              </div>
+            ))}
             <div>
               结果：<b>{result.fontSize}pt</b> · {result.pages} 页 ·{' '}
               {result.withinTargetPages ? '达标 ✓' : '未达标'} · 搜索{' '}

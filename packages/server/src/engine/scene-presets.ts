@@ -1,9 +1,11 @@
 /**
  * 场景预设：把排版引擎的调节钮（密度/留白/宽高比/缩放下限/宽度档位/策略）按学科场景
- * 打包成命名预设，并按内容特征做确定性推荐——"分类讨论"：内容极多的背诵型课程才需要
- * samples 里那种极致压缩；理科公式型课程文本量小，公式可读性优先、允许留白。
+ * 打包成命名预设——"分类讨论"：内容极多的背诵型课程才需要 samples 里那种极致压缩；
+ * 理科公式型课程文本量小，公式可读性优先、允许留白。
  *
- * 推荐只是建议：机制是"程序推荐 + 用户可改"，推荐理由必须说得清（纯规则，无黑盒）。
+ * 定位（RULES.md §三 落地后）：预设是「常见组合的命名快捷方式」，只在用户强制指定时
+ * 直接使用；自动模式的参数由 rule-engine.ts 的硬约束交集推导（推荐理由 = rule trace，
+ * 纯规则、无黑盒）。本文件还承担内容统计（analyzeContent）与阈值（SCENE_THRESHOLDS）。
  * 预设字段就是 GridSearchParams 的子集，引擎内核零改动。
  */
 import type { Density } from '../types/index.js';
@@ -123,6 +125,9 @@ export const SCENE_THRESHOLDS = {
   /** code（RULES.md 的 H4）：代码块数 ≥ 此值。判例：sample.md（5 个代码块）应命中 code；
    *  random-topic（3 个，但以文字为主）不该被代码绑架 —— 故取 4 */
   codeMinBlocks: 4,
+  /** H3 表格可读：表格数 ≥ 此值 **且** 用户声明的学科 atomRoles.table === 'core' 才触发
+   *（力学层测不出"表是不是知识本体"，缺学科声明时表格按普通内容排） */
+  tableMinCount: 3,
   /** text-cram：剥后正文字数 ≥ 此值 */
   cramCharCount: 1500,
 } as const;
@@ -179,75 +184,7 @@ export function analyzeContent(blocks: ContentBlock[]): ContentStats {
   };
 }
 
-/**
- * 按内容特征推荐场景。优先级依 RULES.md §1.4：**H1 公式 > H4 代码 > H2 图片**
- * ——刚性原子里，公式和代码缩小即毁内容（上下标糊掉、缩进读不出），图片缩小只是变小。
- * 冲突时给出的 warning 记在返回值里，前端要显示：这类冲突过去是**静默失败**
- * （老版本图片规则排在最前，"图+公式"材料的公式被 minScale 0.7 悄悄缩小）。
- *
- * 注：这仍是"优先级链选一个预设"的形态，不是 RULES.md 目标形态的"硬约束取交集"。
- * 属于向规范收敛的中间步，冲突至少不再无声。
- */
-export function recommendScene(stats: ContentStats): {
-  scene: SceneId;
-  reason: string;
-  /** 存在被牺牲的次要诉求时给出，前端应提示用户可手动改选 */
-  warning?: string;
-} {
-  const t = SCENE_THRESHOLDS;
-
-  const imageHeavy =
-    stats.imageBlockCount >= t.visualImageCount ||
-    (stats.blockCount > 0 && stats.imageBlockCount / stats.blockCount >= t.visualImageRatio);
-  const imageNote = `图片 ${stats.imageBlockCount} 块`;
-
-  const displayPer1000 =
-    stats.charCount > 0 ? (stats.displayFormulaCount / stats.charCount) * 1000 : 0;
-  const formulaHeavy =
-    displayPer1000 >= t.displayPer1000 && stats.displayFormulaCount >= t.formulaMinDisplay;
-  const codeHeavy = stats.codeBlockCount >= t.codeMinBlocks;
-
-  // H1 公式可读（最高优先级：公式缩小 = 毁内容）
-  if (formulaHeavy) {
-    const sacrificed = [
-      codeHeavy ? `代码块 ${stats.codeBlockCount} 个` : '',
-      imageHeavy ? imageNote : '',
-    ].filter(Boolean);
-    return {
-      scene: 'formula',
-      reason: `独立公式 ${stats.displayFormulaCount} 个（${displayPer1000.toFixed(0)}/千字），公式可读性优先`,
-      warning: sacrificed.length
-        ? `材料同时含${sacrificed.join('、')}，已优先保公式，它们可能被压缩；可手动改选场景`
-        : undefined,
-    };
-  }
-
-  // H4 代码不折行（次高：折行破坏缩进语义）
-  if (codeHeavy) {
-    return {
-      scene: 'code',
-      reason: `代码块 ${stats.codeBlockCount} 个，代码不折行优先`,
-      warning: imageHeavy ? `材料同时含${imageNote}，已优先保代码；可手动改选场景` : undefined,
-    };
-  }
-
-  // H2 图片保真
-  if (imageHeavy) {
-    return {
-      scene: 'visual',
-      reason: `独立图片块 ${stats.imageBlockCount} 个（占比 ${Math.round((100 * stats.imageBlockCount) / Math.max(stats.blockCount, 1))}%），图片优先保原尺寸`,
-    };
-  }
-
-  if (stats.charCount >= t.cramCharCount) {
-    return {
-      scene: 'text-cram',
-      reason: `正文约 ${stats.charCount} 字（阈值 ${t.cramCharCount}），大文本走极限密度`,
-    };
-  }
-
-  return {
-    scene: 'balanced',
-    reason: `正文约 ${stats.charCount} 字、独立公式 ${stats.displayFormulaCount} 个、代码 ${stats.codeBlockCount} 块、图片 ${stats.imageBlockCount} 块，形态均衡`,
-  };
-}
+// 场景推荐已迁往 rule-engine.ts（recommendScene 保留旧签名）：
+// 老的"优先级链选一个预设"被"硬约束取交集"取代——多类刚性原子并存时各自的保护
+// 同时生效，不再选赢家丢其余。本文件此后只承担：统计（analyzeContent）、阈值
+// （SCENE_THRESHOLDS）、命名快捷方式（SCENE_PRESETS，用户强制指定时直接用）。

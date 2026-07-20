@@ -52,6 +52,9 @@ interface SceneRequest {
   debug?: boolean;       // true = PDF 叠加网格线/块方框/标签（排版本身不变，文件名加「-网格」后缀）
   allowReorder?: boolean; // true = 用户声明「内容顺序可打乱」（RULES.md S2）：开启跨页回填，
                           // 后面的块可填进前面页的缺口换密度；默认 false（保守假定顺序刚性强）
+  subject?: string;       // 用户声明的学科 id：'calculus' | 'os' | 'semiconductor' | 'politics'。
+                          // 启用学科层规则（os 表=core → H3 表格保护；politics 顺序弱 → 自动回填）。
+                          // 省略 = 只走力学层兜底；传未知 id 返回 400
 }
 ```
 
@@ -63,9 +66,18 @@ interface SceneRequest {
   stats: ContentStats;        // charCount / displayFormulaCount / inlineFormulaCount /
                               // imageBlockCount / tableCount / codeBlockCount / blockCount
   recommended: {
-    scene: SceneId; name: string; reason: string;
-    warning?: string;         // 多类刚性原子冲突时的取舍提示（如"图+公式"优先保了公式）
+    scene: SceneId; name: string; reason: string;  // reason 由 rule trace 派生
+    warning?: string;         // 多类刚性原子并存的提示（保护已同时生效/取交集，但空间更紧）
   };
+  trace: {                    // rule trace：实际触发的排版规则记账（RULES.md §三）
+    rule: 'H1' | 'H2' | 'H4' | 'S1' | 'S2' | 'S3';  // H=硬约束，S=软偏好
+    kind: 'hard' | 'soft';
+    detail: string;           // 人话：触发条件 + 实际钳制
+  }[];                        // 自动模式的参数由 trace 决定；强制预设时仍返回（仅供参考）
+  subject: string | null;     // 生效的学科声明（null = 未声明）
+  subjectSuggestion: {        // 关键词识别建议；建议 ≠ 声明，用户选了才生效
+    id: string; name: string; matchedAliases: string[];
+  } | null;
   usedScene: SceneId;         // 实际使用的场景（用户指定则以用户为准）
   usedSceneName: string;
   fontSize: number;           // 搜出的最优字号 pt
