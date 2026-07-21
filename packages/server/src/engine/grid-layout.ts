@@ -246,16 +246,20 @@ export async function searchGridFontSize(
   let lo: number = SEARCH_CONFIG.minFontSize;
   let hi: number = SEARCH_CONFIG.maxFontSize;
 
-  // 先探下限：最小字号仍超页 → 内容太多，返回最佳努力结果
+  // 先探下限。最小字号仍超页 → 目标页数物理上达不到，但不能就地返回 6pt 的最差版本
+  // （字最小、尾页还只剩一点内容堆成竹竿）——把目标改成"实际能做到的最少页数"，
+  // 继续同一套二分，交出"最少页数下的最大字号"。真实判例：6572 字填目标 1 页，
+  // 老行为返回 6pt/2 页（尾页 5/6 空），新行为返回 8pt/2 页（两页全满）。
   const lowTrial = await trial(lo);
   record(lowTrial);
   let best = lowTrial;
+  const effectiveTarget = Math.max(params.targetPages, lowTrial.pages);
 
-  if (lowTrial.pages <= params.targetPages) {
+  {
     // 先探上界：mid 吸附在网格上永远取不到 hi 本身，内容很少时 24pt 直接命中就不用再搜
     const highTrial = await trial(hi);
     record(highTrial);
-    if (highTrial.pages <= params.targetPages) {
+    if (highTrial.pages <= effectiveTarget) {
       best = highTrial;
     } else {
       // maxIterations 是防御性兜底（精度钳制后区间每轮至少缩 0.5pt，正常几轮就收敛）
@@ -263,7 +267,7 @@ export async function searchGridFontSize(
         const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐 0.5pt
         const t = await trial(mid);
         record(t);
-        if (t.pages <= params.targetPages) {
+        if (t.pages <= effectiveTarget) {
           best = t; // 页数达标，记录并尝试更大字号
           lo = mid;
         } else {
@@ -277,6 +281,7 @@ export async function searchGridFontSize(
     blocks,
     grid,
     best,
+    // 达标与否仍按用户的原始目标判定，兜底搜索不改变"未达标"的事实
     withinTargetPages: best.pages <= params.targetPages,
     history,
   };

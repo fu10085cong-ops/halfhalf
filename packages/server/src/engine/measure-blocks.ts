@@ -136,6 +136,12 @@ export async function measureBlocks(
   }
   body { margin: 0; }
   .measure-block { margin: 0 0 20px 0; }
+  /* 与渲染侧 .layout-block 的同名规则严格对齐（.hh-page 是 multicol 容器 = BFC，
+     首/尾子元素边距会被算进容器高）：渲染删首元素上边距、这里不删的话，每块测量高
+     虚增一截标题上边距（实测 test.md 19 块共虚占 9%），版面上表现为块间诡异空隙。
+     尾边距同理清零——块间分隔由 gutter 负责，盒内尾部空白是纯浪费。 */
+  .measure-block > :first-child { margin-top: 0; }
+  .measure-block > :last-child { margin-bottom: 0; }
   ${PRINT_CSS}
 </style>
 </head>

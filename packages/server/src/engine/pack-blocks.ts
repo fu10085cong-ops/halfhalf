@@ -134,30 +134,39 @@ export function packBlocks(
     };
 
     // 页内换位：本页成员 + 卡住块，按高度序/面积序各试一轮 first-fit，
-    // 全装得下才接受（老成员只挪位置不换页，卡住块新增落位）
+    // 全装得下才接受（老成员只挪位置不换页，卡住块新增落位）。
+    // 优先"钉住页首块"的变体：该页阅读序第一块保持最先落位（否则标题这类短小块
+    // 会按尺寸序沉到页面下方，观感像排坏了）；钉住装不下才放开。
     const repackPage = (p: number, extra: { id: string; heightMm: number; span: number }): boolean => {
       const members = [...pageMembers[p], extra];
-      const orderings = [
-        [...members].sort((a, b) => b.heightMm - a.heightMm),
-        [...members].sort((a, b) => b.heightMm * b.span - a.heightMm * a.span),
-      ];
+      const first = pageMembers[p][0];
+      const byHeight = [...members].sort((a, b) => b.heightMm - a.heightMm);
+      const byArea = [...members].sort((a, b) => b.heightMm * b.span - a.heightMm * a.span);
+      const pinFirst = (arr: typeof members) =>
+        first ? [first, ...arr.filter((m) => m !== first)] : arr;
+      const orderings = [pinFirst(byHeight), pinFirst(byArea), byHeight, byArea];
       for (const order of orderings) {
         const sky: Sky = new Array(geo.columnsPerPage).fill(0);
         const trial: { id: string; anchor: number; y: number }[] = [];
         let allFit = true;
         for (const m of order) {
+          // 重排用 best-fit（落点最低者优先，平手取最左）而非主流程的 leftmost-first-fit：
+          // leftmost 会把后续块全勾在最左的凸台上堆成左塔（钉住的小标题块尤其如此），
+          // best-fit 先铺平地面，装得下的排布多得多
           const maxAnchor = geo.columnsPerPage - m.span;
-          let put = false;
+          let bestAnchor = -1;
+          let bestY = Infinity;
           for (let anchor = 0; anchor <= maxAnchor; anchor++) {
             const y = windowTop(sky, anchor, m.span, geo.gapMm);
-            if (y + m.heightMm <= geo.columnHeightMm) {
-              settle(sky, anchor, m.span, y, m.heightMm);
-              trial.push({ id: m.id, anchor, y });
-              put = true;
-              break;
+            if (y + m.heightMm <= geo.columnHeightMm && y < bestY) {
+              bestY = y;
+              bestAnchor = anchor;
             }
           }
-          if (!put) {
+          if (bestAnchor >= 0) {
+            settle(sky, bestAnchor, m.span, bestY, m.heightMm);
+            trial.push({ id: m.id, anchor: bestAnchor, y: bestY });
+          } else {
             allFit = false;
             break;
           }

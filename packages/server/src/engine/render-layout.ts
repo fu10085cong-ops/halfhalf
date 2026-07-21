@@ -196,8 +196,11 @@ export async function renderRectsPdf(
   }
   .layout-page:not(:last-child) { break-after: page; }
   .layout-block { position: absolute; }
-  /* 块内首元素顶部外边距会撑歪 y 定位，压掉它 */
+  /* 块内首元素顶部外边距会撑歪 y 定位，压掉它；尾元素底部外边距是盒内不可见空白
+     （块间分隔由 gutter 负责），一并压掉——两条规则必须与测量侧 .measure-block 严格对齐，
+     否则测量高 ≠ 渲染高（首边距曾只在渲染侧删，每块虚高一截标题上边距） */
   .layout-block > :first-child { margin-top: 0; }
+  .layout-block > :last-child { margin-bottom: 0; }
   ${PRINT_CSS}
   ${overlayCss}
 </style>

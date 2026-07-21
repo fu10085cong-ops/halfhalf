@@ -136,10 +136,20 @@ export function deriveLayoutParams(
     gutterMm = 2;
     maxAspect = 4;
     sceneEquivalent = 'text-cram';
+    // 理由必须诚实：材料里可能有不少刚性原子、只是没过保护线（真实判例 poli-econ：
+    // 32 个公式但 4.9/千字差 0.1 没触发 H1）——不写出来会显得推荐器瞎
+    const nearMiss: string[] = [];
+    if (stats.displayFormulaCount > 0) {
+      const per1000 = stats.charCount > 0 ? (stats.displayFormulaCount / stats.charCount) * 1000 : 0;
+      nearMiss.push(`独立公式 ${stats.displayFormulaCount} 个（${per1000.toFixed(1)}/千字，保护线 ${t.displayPer1000}）`);
+    }
+    if (stats.tableCount > 0) nearMiss.push(`表格 ${stats.tableCount} 张`);
     trace.push({
       rule: 'S1',
       kind: 'soft',
-      detail: `正文约 ${stats.charCount} 字（阈值 ${t.cramCharCount}）且无刚性原子保护介入 → 极限密度、留白 2mm`,
+      detail:
+        `正文约 ${stats.charCount} 字（阈值 ${t.cramCharCount}）→ 极限密度、留白 2mm` +
+        (nearMiss.length ? `；含${nearMiss.join('、')}，均未达保护线，密度按大文本优先` : ''),
     });
   } else if (formulaHeavy) {
     maxAspect = 1.3;
