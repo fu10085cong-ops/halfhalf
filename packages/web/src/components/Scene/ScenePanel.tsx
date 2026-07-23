@@ -5,7 +5,46 @@
  * - 结果：内容统计 / 推荐场景 / 字号页数 / 各类警告 / PDF 内嵌预览 + 下载
  */
 import { useRef, useState } from 'react';
-import type { SceneId, SceneResult } from '../../types';
+import type { SceneId, SceneResult, BlockSuggestion, AiCompressResponse, AiCompressSummary } from '../../types';
+
+/** BYOK 配置存本地浏览器（localStorage），不上传服务器；key 也只在本机 */
+const AI_KEYS = { endpoint: 'hh.ai.endpoint', model: 'hh.ai.model', key: 'hh.ai.key' } as const;
+const lsGet = (k: string, fallback: string) => {
+  try {
+    return localStorage.getItem(k) ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const lsSet = (k: string, v: string) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* 隐私模式等禁用 localStorage：静默降级为本会话内存 */
+  }
+};
+
+/** 能否勾选应用：非跳过、改写与原文不同、且原子/公式安全网都过（"没变短"仍可由用户自行接受） */
+function isApplicable(s: BlockSuggestion): boolean {
+  return !s.skipped && s.suggested !== s.original && s.safety.atomsPreserved && s.safety.formulaClean;
+}
+
+/** 原文/建议两栏对照的通用样式（等宽、自动换行、各占一半、可纵向滚动） */
+const diffCol: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  margin: 0,
+  padding: 6,
+  background: '#f8fafc',
+  border: '1px solid #e2e8f0',
+  borderRadius: 3,
+  fontFamily: 'monospace',
+  fontSize: 12,
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxHeight: 160,
+  overflow: 'auto',
+};
 
 const SCENE_OPTIONS: { value: SceneId | 'auto'; label: string }[] = [
   { value: 'auto', label: '自动推荐' },
@@ -74,6 +113,21 @@ export default function ScenePanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // —— AI 语义精简（BYOK）——
+  const [showAi, setShowAi] = useState(false);
+  const [aiEndpoint, setAiEndpoint] = useState(() =>
+    lsGet(AI_KEYS.endpoint, 'https://api.openai.com/v1/chat/completions')
+  );
+  const [aiModel, setAiModel] = useState(() => lsGet(AI_KEYS.model, 'gpt-4o-mini'));
+  const [aiKey, setAiKey] = useState(() => lsGet(AI_KEYS.key, ''));
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<BlockSuggestion[]>([]);
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  const [aiSummary, setAiSummary] = useState<AiCompressSummary | null>(null);
+  /** 提交精简时那份 markdown 的快照——range 偏移是相对它算的，回写也拼回它 */
+  const [compressSource, setCompressSource] = useState('');
+
   const insertImageFile = async (file: File) => {
     const snippet = await fileToMarkdownImage(file);
     const el = textareaRef.current;
@@ -121,6 +175,66 @@ export default function ScenePanel() {
       setBusy(false);
     }
   };
+
+  const runCompress = async () => {
+    if (!aiKey.trim()) {
+      setAiError('请先填写 API Key（存本地浏览器，不上传服务器）');
+      setShowAi(true);
+      return;
+    }
+    setAiBusy(true);
+    setAiError(null);
+    setSuggestions([]);
+    setAiSummary(null);
+    const snapshot = markdown;
+    setCompressSource(snapshot);
+    try {
+      const resp = await fetch('/api/ai/compress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          markdown: snapshot,
+          provider: {
+            endpoint: aiEndpoint,
+            model: aiModel,
+            headers: { Authorization: `Bearer ${aiKey}` },
+          },
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      const res = data as AiCompressResponse;
+      setSuggestions(res.suggestions);
+      setAiSummary(res.summary);
+      // 默认勾选安全网通过的块；其余（含"改写没变短"）留给用户自己判断
+      const acc: Record<string, boolean> = {};
+      res.suggestions.forEach((s) => {
+        acc[s.blockId] = s.safety.ok;
+      });
+      setAccepted(acc);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  /** 把勾选的建议按 range 降序拼回快照（降序保证靠前的偏移不被前面的替换挪动） */
+  const applyAccepted = () => {
+    let out = compressSource;
+    const toApply = suggestions
+      .filter((s) => accepted[s.blockId] && isApplicable(s))
+      .sort((a, b) => b.range.start - a.range.start);
+    for (const s of toApply) {
+      out = out.slice(0, s.range.start) + s.suggested + '\n\n' + out.slice(s.range.end);
+    }
+    setMarkdown(out);
+    setSuggestions([]);
+    setAccepted({});
+    setAiSummary(null);
+  };
+
+  const acceptedCount = suggestions.filter((s) => accepted[s.blockId] && isApplicable(s)).length;
 
   const warn = result
     ? [
@@ -230,7 +344,152 @@ export default function ScenePanel() {
           <button onClick={run} disabled={busy} style={{ fontWeight: 'bold' }}>
             {busy ? '排版中…' : '生成 PDF'}
           </button>
+          <button
+            onClick={runCompress}
+            disabled={aiBusy}
+            title="用你自己的 AI key 把叙述性文字改写成要点式，只出建议不自动改；公式/代码/表格/图片不会被动"
+          >
+            {aiBusy ? 'AI 精简中…' : '✨ AI 精简'}
+          </button>
+          <button onClick={() => setShowAi((v) => !v)} title="配置 AI 服务商端点 / 模型 / API Key（存本地浏览器）">
+            AI 设置 {showAi ? '▴' : '▾'}
+          </button>
         </div>
+
+        {showAi && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              padding: 8,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 4,
+              fontSize: 13,
+            }}
+          >
+            <label>
+              端点
+              <input
+                type="text"
+                value={aiEndpoint}
+                onChange={(e) => {
+                  setAiEndpoint(e.target.value);
+                  lsSet(AI_KEYS.endpoint, e.target.value);
+                }}
+                style={{ marginLeft: 4, width: 320 }}
+                placeholder="https://api.openai.com/v1/chat/completions"
+              />
+            </label>
+            <label>
+              模型
+              <input
+                type="text"
+                value={aiModel}
+                onChange={(e) => {
+                  setAiModel(e.target.value);
+                  lsSet(AI_KEYS.model, e.target.value);
+                }}
+                style={{ marginLeft: 4, width: 140 }}
+                placeholder="gpt-4o-mini"
+              />
+            </label>
+            <label>
+              API Key
+              <input
+                type="password"
+                value={aiKey}
+                onChange={(e) => {
+                  setAiKey(e.target.value);
+                  lsSet(AI_KEYS.key, e.target.value);
+                }}
+                style={{ marginLeft: 4, width: 220 }}
+                placeholder="sk-..."
+              />
+            </label>
+            <span style={{ color: '#64748b' }}>
+              仅 OpenAI 兼容格式；key 存本地浏览器，只在请求内存里过后端，不落服务器
+            </span>
+          </div>
+        )}
+
+        {aiError && <div style={{ color: '#b91c1c' }}>AI 出错：{aiError}</div>}
+
+        {suggestions.length > 0 && (
+          <div
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 4,
+              padding: 8,
+              maxHeight: '45%',
+              overflow: 'auto',
+              fontSize: 13,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 6,
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <b>AI 精简建议（只是建议，勾选后「应用」才写回文本框）</b>
+              <span>
+                <button onClick={applyAccepted} disabled={acceptedCount === 0} style={{ fontWeight: 'bold' }}>
+                  应用选中（{acceptedCount} 块）
+                </button>
+                <button onClick={() => { setSuggestions([]); setAccepted({}); setAiSummary(null); }} style={{ marginLeft: 6 }}>
+                  放弃
+                </button>
+              </span>
+            </div>
+            {aiSummary && (
+              <div style={{ color: '#555', marginBottom: 6 }}>
+                共 {aiSummary.total} 块 · 可精简 {aiSummary.compressed} 块 · 正文（全接受口径）
+                {aiSummary.charsBefore}→{aiSummary.charsAfter} 字
+              </div>
+            )}
+            {suggestions.map((s) => {
+              const applicable = isApplicable(s);
+              return (
+                <div key={s.blockId} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <input
+                      type="checkbox"
+                      disabled={!applicable}
+                      checked={!!accepted[s.blockId]}
+                      onChange={(e) => setAccepted((a) => ({ ...a, [s.blockId]: e.target.checked }))}
+                    />
+                    <b>{s.blockTitle || s.blockId}</b>
+                    {!s.skipped && (
+                      <span style={{ color: '#555' }}>
+                        {s.charsBefore}→{s.charsAfter} 字
+                      </span>
+                    )}
+                    {s.safety.ok ? (
+                      <span style={{ color: '#15803d' }}>✅ 可精简</span>
+                    ) : (
+                      <span style={{ color: s.skipped ? '#64748b' : '#b45309' }}>
+                        {s.skipped ? '—' : '⚠️'} {s.safety.reason}
+                      </span>
+                    )}
+                  </label>
+                  {applicable && (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                      <pre style={diffCol}>{s.original}</pre>
+                      <pre style={diffCol}>{s.suggested}</pre>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <textarea
           ref={textareaRef}

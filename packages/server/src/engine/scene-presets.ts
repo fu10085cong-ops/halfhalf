@@ -140,7 +140,7 @@ const INLINE_MATH_RE = /\$[^$\n]+\$/g;
  * **管道符是关键**——老版本不要求它，把 Markdown 的水平分隔线 `---` 也算成了表格：
  * 真实材料 test.md 只有 1 张表却被报成 6 张（5 条 `---` 全被误判）。
  */
-function isTableDivider(line: string): boolean {
+export function isTableDivider(line: string): boolean {
   return /^[\s|:-]+$/.test(line) && line.includes('|') && line.includes('-');
 }
 

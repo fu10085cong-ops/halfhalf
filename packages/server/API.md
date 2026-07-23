@@ -354,5 +354,78 @@ interface AiProxyRequest {
 
 - key 只存在于单次请求的内存中，服务端不记录日志、不落盘
 - 前端**不应该**把用户的 key 打进自己的日志/埋点系统
-- 这个接口目前只是占位转发层，没有接具体的"审核""精简""图表重塑"等业务逻辑，那些 prompt 设计
-  和结果处理（diff 展示、人工确认流程等）都需要在前端/后续版本里实现
+- 这个接口是不理解业务的**通用转发层**。"AI 语义级精简"已经有了专门的业务接口
+  [`POST /api/ai/compress`](#post-apiaicompress)（后端负责分块/遮罩/安全网），不走这个裸转发；
+  裸转发留给"审核""图表重塑"等尚未实现的业务，或前端自定义的一次性调用。
+
+---
+
+## `POST /api/ai/compress`
+
+AI 语义级精简（BYOK）：把叙述性文字改写成要点式以省纸，**只出建议、不自动改文档**。
+后端负责安全关键的部分——分块、遮罩刚性原子、调用 AI、回填、三道安全网——前端只做
+diff 展示与逐块接受/拒绝。**公式/代码/表格/图片/标题从头到尾不进 AI 的输入**（遮罩成
+`〔HH数字〕` 哨兵），所以 AI 无从改错它们。v1 只支持 OpenAI 兼容的 `/chat/completions` 形状。
+
+处理流程：`chunkMarkdown` 分块 → 逐块 `maskAtoms` 遮罩刚性原子、只留散文 → 拿用户 key 调 AI
+改写 → `unmaskAtoms` 回填 → 三道安全网（①哨兵完整性 ②公式预检 `precheckFormulas` 不引入
+新错误 ③剥后正文确实缩短）→ 批量返回逐块建议。任一安全网不过 → 作废该块、`suggested` 保留
+原文、`safety.ok=false` 且给出中文原因。BYOK key 同 `/ai/proxy`：只在单次请求内存里，不落盘。
+
+### 请求 body
+
+```ts
+interface AiCompressRequest {
+  markdown: string;                    // 必填，非空（图片以 data: URI 内嵌，同 /api/scene）
+  provider: {
+    endpoint: string;                  // 必须 https 且域名在白名单内（同 /ai/proxy）
+    model: string;                     // 如 'gpt-4o-mini'
+    headers?: Record<string, string>;  // 认证头，BYOK key 放这里（Authorization: Bearer ...）
+    temperature?: number;              // 默认 0.2（低温保真）
+  };
+  blockIds?: string[];                 // 只精简这些块（chunkMarkdown 的 block id）；省略 = 全部正文块
+  options?: { minReductionChars?: number };  // 认为"确实精简"的最小缩减字数，默认 4
+}
+```
+
+**校验规则**（不满足直接 `400 + ApiErrorResponse`）：`markdown` 非空字符串；`provider.endpoint`
+合法 https 且域名在白名单内；`provider.model` 非空字符串；`temperature`（若传）>= 0；
+`blockIds`（若传）是数组。
+
+### 响应 `200`
+
+```ts
+interface BlockSuggestion {
+  blockId: string;
+  blockTitle: string;
+  kind: 'text' | 'image';
+  original: string;                    // 该块原始 Markdown
+  suggested: string;                   // 改写后；被跳过/被安全网打回时 === original
+  charsBefore: number;                 // 剥后正文字数（口径同 /api/scene 的 stats）
+  charsAfter: number;
+  range: { start: number; end: number };  // 该块在提交那份 markdown 里的字符区间，供前端按降序拼接回写
+  skipped: boolean;                    // 纯原子块/图片块/正文过短/未选中 → 未调 AI
+  safety: {
+    ok: boolean;                       // 三道安全网都过；false 时前端默认不勾选，但仍展示原因
+    atomsPreserved: boolean;           // 占位符逐一回来、无丢失/重复/杜撰
+    formulaClean: boolean;             // 回填后未引入新 KaTeX 错误
+    reason?: string;                   // ok=false 时的中文原因
+  };
+}
+interface AiCompressResponse {
+  suggestions: BlockSuggestion[];      // 按文档顺序，含被跳过的块（前端据此对齐/回写）
+  summary: { total: number; compressed: number; charsBefore: number; charsAfter: number };
+}
+```
+
+**回写约定**：前端把提交时那份 markdown 存为快照，用户勾选后按 `range.start` **降序**逐块
+`slice` 替换（降序保证靠前偏移不被前面替换挪动），得到新 markdown，再走既有 `/api/scene`。
+
+### 错误
+
+- `400`：参数校验不通过。
+- `504`：上游 AI 响应超时。
+- `500`：其他失败（`AI 精简失败: <原因>`，如上游返回非 2xx、响应不是 OpenAI 形状等）。
+
+> 单块的 AI 调用失败**不会**让整批失败——那一块记为 `safety.ok=false`、`reason` 含失败原因、
+> `suggested` 保留原文，其余块照常返回。

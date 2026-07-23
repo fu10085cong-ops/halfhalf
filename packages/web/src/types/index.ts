@@ -102,3 +102,48 @@ export interface RenderPreviewRequest {
   columns?: number;
   cleanup?: boolean;
 }
+
+/** BYOK AI 服务商配置（POST /api/ai/compress）；v1 只支持 OpenAI 兼容 /chat/completions 形状 */
+export interface AiProviderConfig {
+  endpoint: string;
+  model: string;
+  /** 认证头等；BYOK key 放这里（Authorization: Bearer ...） */
+  headers?: Record<string, string>;
+  temperature?: number;
+}
+
+/** 单块改写的安全网结论（占位符完整 / 无新公式错误 / 确实缩短） */
+export interface AtomSafety {
+  ok: boolean;
+  atomsPreserved: boolean;
+  formulaClean: boolean;
+  reason?: string;
+}
+
+/** 单个内容块的精简建议（原文 vs 建议，供逐块展示 diff、接受/拒绝） */
+export interface BlockSuggestion {
+  blockId: string;
+  blockTitle: string;
+  kind: 'text' | 'image';
+  original: string;
+  suggested: string;
+  charsBefore: number;
+  charsAfter: number;
+  /** 该块在提交那份 markdown 里的字符区间 [start, end)，按降序拼接回写 */
+  range: { start: number; end: number };
+  skipped: boolean;
+  safety: AtomSafety;
+}
+
+export interface AiCompressSummary {
+  total: number;
+  compressed: number;
+  charsBefore: number;
+  charsAfter: number;
+}
+
+/** POST /api/ai/compress 的响应（批量一次性返回） */
+export interface AiCompressResponse {
+  suggestions: BlockSuggestion[];
+  summary: AiCompressSummary;
+}
