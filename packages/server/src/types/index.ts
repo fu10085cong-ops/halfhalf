@@ -155,6 +155,16 @@ export interface AiProviderConfig {
   temperature?: number;
 }
 
+/**
+ * POST /api/ai/structurize 的请求体（⓪ 结构化入口：任意粘贴内容 → 标准 .md）。
+ * provider 省略时用服务器统一 key（env HALFHALF_AI_ENDPOINT/MODEL/KEY）。
+ */
+export interface AiStructurizeRequest {
+  /** 任意形态的粘贴内容（Word 文本/课件/聊天记录），非 Markdown 也行 */
+  content: string;
+  provider?: AiProviderConfig;
+}
+
 /** POST /api/ai/compress 的请求体形状 */
 export interface AiCompressRequest {
   /** 待精简的完整 Markdown（图片以 data: URI 内嵌，同 /api/scene） */

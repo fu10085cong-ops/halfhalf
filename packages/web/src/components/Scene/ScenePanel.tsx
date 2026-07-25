@@ -5,6 +5,8 @@
  * - 结果：内容统计 / 推荐场景 / 字号页数 / 各类警告 / PDF 内嵌预览 + 下载
  */
 import { useEffect, useRef, useState } from 'react';
+import ChatIntake from './ChatIntake';
+import { apiFetch } from '../../api';
 import type {
   SceneId,
   SceneResult,
@@ -127,7 +129,10 @@ function fileToMarkdownImage(file: File): Promise<string> {
 
 export default function ScenePanel() {
   const [markdown, setMarkdown] = useState(DEFAULT_MD);
-  const [targetPages, setTargetPages] = useState(1);
+  // 默认 2 页 = 一张 A4 双面（半开卷常态）。默认 1 时材料稍多就必然"未达标"警告，
+  // 应急用户会陷进"生成→看警告→改页数→重来"的循环
+  const [targetPages, setTargetPages] = useState(2);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [debug, setDebug] = useState(false);
@@ -147,7 +152,7 @@ export default function ScenePanel() {
 
   useEffect(() => {
     // 生产环境该接口 404，静默隐藏整个速载区
-    fetch('/api/fixtures')
+    apiFetch('/api/fixtures')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.fixtures) setFixtures(d.fixtures as FixtureInfo[]);
@@ -158,7 +163,7 @@ export default function ScenePanel() {
   const loadFixture = async () => {
     if (!fixtureSel) return;
     try {
-      const r = await fetch(`/api/fixtures/${encodeURIComponent(fixtureSel)}`);
+      const r = await apiFetch(`/api/fixtures/${encodeURIComponent(fixtureSel)}`);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       setMarkdown(d.markdown as string);
@@ -198,16 +203,18 @@ export default function ScenePanel() {
     if (file) await insertImageFile(file);
   };
 
-  const run = async () => {
+  /** mdOverride：ChatIntake「采用并排版」时刚 setMarkdown 的值还没进本闭包，直接传参绕过 */
+  const run = async (mdOverride?: string) => {
+    const md = mdOverride ?? markdown;
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const resp = await fetch('/api/scene', {
+      const resp = await apiFetch('/api/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          markdown,
+          markdown: md,
           targetPages,
           scene,
           orientation,
@@ -241,7 +248,7 @@ export default function ScenePanel() {
         },
       ]);
 
-      const pdfResp = await fetch(`/api/download/${(data as SceneResult).jobId}/pdf`);
+      const pdfResp = await apiFetch(`/api/download/${(data as SceneResult).jobId}/pdf`);
       if (!pdfResp.ok) throw new Error('PDF 下载失败');
       const blob = await pdfResp.blob();
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -266,7 +273,7 @@ export default function ScenePanel() {
     const snapshot = markdown;
     setCompressSource(snapshot);
     try {
-      const resp = await fetch('/api/ai/compress', {
+      const resp = await apiFetch('/api/ai/compress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -336,6 +343,18 @@ export default function ScenePanel() {
     <div style={{ display: 'flex', gap: 12, height: '100%', padding: 12, boxSizing: 'border-box' }}>
       {/* 左：输入 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+        {/* ⓪ 材料转换：应急路径第一棒。BYOK key 填了就带上（花用户自己的钱），否则走服务器统一 key */}
+        <ChatIntake
+          provider={
+            aiKey.trim()
+              ? { endpoint: aiEndpoint, model: aiModel, headers: { Authorization: `Bearer ${aiKey}` } }
+              : null
+          }
+          onAdopt={(md, generate) => {
+            setMarkdown(md);
+            if (generate) void run(md);
+          }}
+        />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label>
             目标页数
@@ -351,61 +370,6 @@ export default function ScenePanel() {
               style={{ width: 56, marginLeft: 4 }}
             />
           </label>
-          <label>
-            场景
-            <select
-              value={scene}
-              onChange={(e) => setScene(e.target.value as SceneId | 'auto')}
-              style={{ marginLeft: 4, maxWidth: 260 }}
-            >
-              {SCENE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label title="声明这是什么课：政治类会自动允许乱序换密度，操作系统类会保护对比表不被缩小。识别建议只是提示，选了才生效">
-            学科
-            <select
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              style={{ marginLeft: 4 }}
-            >
-              {SUBJECT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            方向
-            <select
-              value={orientation}
-              onChange={(e) => setOrientation(e.target.value as 'portrait' | 'landscape')}
-              style={{ marginLeft: 4 }}
-            >
-              <option value="portrait">竖版</option>
-              <option value="landscape">横版</option>
-            </select>
-          </label>
-          <label title="在 PDF 上叠加 24 列网格线、每个块的方框和标签；不改变排版本身">
-            <input
-              type="checkbox"
-              checked={debug}
-              onChange={(e) => setDebug(e.target.checked)}
-            />
-            显示网格
-          </label>
-          <label title="要点式材料（如政治「一问几面」）顺序打乱几乎无代价，勾选后允许后面的内容填进前面页的空隙，更省纸。推导/教程类材料（数学、代码）不建议勾选">
-            <input
-              type="checkbox"
-              checked={allowReorder}
-              onChange={(e) => setAllowReorder(e.target.checked)}
-            />
-            允许乱序换密度
-          </label>
           <button onClick={() => fileInputRef.current?.click()}>插入图片</button>
           <input
             ref={fileInputRef}
@@ -418,7 +382,7 @@ export default function ScenePanel() {
               e.target.value = '';
             }}
           />
-          <button onClick={run} disabled={busy} style={{ fontWeight: 'bold' }}>
+          <button onClick={() => run()} disabled={busy} style={{ fontWeight: 'bold' }}>
             {busy ? '排版中…' : '生成 PDF'}
           </button>
           <button
@@ -431,7 +395,82 @@ export default function ScenePanel() {
           <button onClick={() => setShowAi((v) => !v)} title="配置 AI 服务商端点 / 模型 / API Key（存本地浏览器）">
             AI 设置 {showAi ? '▴' : '▾'}
           </button>
+          <button
+            onClick={() => setShowAdvanced((v) => !v)}
+            title="场景/学科/方向/网格调试/乱序——应急路径用不到这些，默认全 auto"
+          >
+            高级选项 {showAdvanced ? '▴' : '▾'}
+          </button>
         </div>
+
+        {/* 高级选项：应急路径的 8 个决策点收敛成 1 个（目标页数），其余折叠到这里 */}
+        {showAdvanced && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              padding: 8,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 4,
+              fontSize: 13,
+            }}
+          >
+            <label>
+              场景
+              <select
+                value={scene}
+                onChange={(e) => setScene(e.target.value as SceneId | 'auto')}
+                style={{ marginLeft: 4, maxWidth: 260 }}
+              >
+                {SCENE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label title="声明这是什么课：政治类会自动允许乱序换密度，操作系统类会保护对比表不被缩小。识别建议只是提示，选了才生效">
+              学科
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                style={{ marginLeft: 4 }}
+              >
+                {SUBJECT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              方向
+              <select
+                value={orientation}
+                onChange={(e) => setOrientation(e.target.value as 'portrait' | 'landscape')}
+                style={{ marginLeft: 4 }}
+              >
+                <option value="portrait">竖版</option>
+                <option value="landscape">横版</option>
+              </select>
+            </label>
+            <label title="在 PDF 上叠加 24 列网格线、每个块的方框和标签；不改变排版本身">
+              <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} />
+              显示网格
+            </label>
+            <label title="要点式材料（如政治「一问几面」）顺序打乱几乎无代价，勾选后允许后面的内容填进前面页的空隙，更省纸。推导/教程类材料（数学、代码）不建议勾选">
+              <input
+                type="checkbox"
+                checked={allowReorder}
+                onChange={(e) => setAllowReorder(e.target.checked)}
+              />
+              允许乱序换密度
+            </label>
+          </div>
+        )}
 
         {/* 测试材料速载（生产环境接口 404，此区自动隐藏） */}
         {fixtures.length > 0 && (
@@ -608,6 +647,23 @@ export default function ScenePanel() {
 
         {result && (
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            {/* 学生第一眼要的结论；工程口径全部收进「引擎详情」 */}
+            <div style={{ fontSize: 14 }}>
+              {result.withinTargetPages ? (
+                <b style={{ color: '#15803d' }}>
+                  ✓ 已排进 {result.pages} 页 · 字号 {result.fontSize}pt —— 可以下载打印
+                </b>
+              ) : (
+                <b style={{ color: '#b45309' }}>
+                  ⚠ 目标 {targetPages} 页塞不下：目前最优 {result.pages} 页 / {result.fontSize}
+                  pt —— 加目标页数，或用「✨ AI 精简」删内容再试
+                </b>
+              )}
+            </div>
+            <details style={{ fontSize: 13 }}>
+              <summary style={{ cursor: 'pointer', color: '#64748b' }}>
+                引擎详情（统计 / 推荐理由 / 规则记账 / 搜索轨迹）
+              </summary>
             <div>
               内容统计：正文≈{result.stats.charCount}字 · 独立公式{result.stats.displayFormulaCount} ·
               行内公式{result.stats.inlineFormulaCount} · 图片块{result.stats.imageBlockCount} · 表格
@@ -640,6 +696,7 @@ export default function ScenePanel() {
               {result.withinTargetPages ? '达标 ✓' : '未达标'} · 搜索{' '}
               {result.history.map((h) => `${h.fontSize}pt→${h.pages}页`).join('，')}
             </div>
+            </details>
             {warn.map((w, i) => (
               <div key={i} style={{ color: '#b45309' }}>
                 ⚠️ {w}

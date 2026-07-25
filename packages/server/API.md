@@ -342,6 +342,33 @@ const url = URL.createObjectURL(blob);
 
 ---
 
+## `POST /api/ai/structurize`（SSE 流式）
+
+⓪ 结构化入口（DESIGN.md）：任意粘贴内容（Word 文本/课件/聊天记录）→ 标准 .md。
+只重组不新增知识；产物过结构体检（切块健康度 + 巨块 + KaTeX 公式预检），
+不合格自动带体检结论追问 AI 一轮（最多一轮）。
+
+```ts
+// 请求
+{
+  content: string;             // 任意文本;超过 HALFHALF_AI_MAX_INPUT(默认 6 万字)返回 413
+  provider?: AiProviderConfig; // BYOK(走域名白名单);省略时用服务器统一 key
+}
+// key 解析顺序:BYOK > 服务器 env(HALFHALF_AI_ENDPOINT / HALFHALF_AI_MODEL / HALFHALF_AI_KEY)> 501
+// 限流:每 IP 每小时 HALFHALF_AI_RATE_LIMIT 次(默认 10),超出 429
+```
+
+SSE 事件流：
+
+```
+event: delta    data: { text: string, attempt: 1 | 2 }   // 增量 md 文本;attempt 变化时前端应清空缓冲
+event: retry    data: { problems: string[] }             // 首轮体检不过,即将追问修正
+event: result   data: { markdown, check: { ok, problems, blockCount }, attempts }  // 最终结果(ok=false 也返回)
+event: error    data: { error: string }
+```
+
+---
+
 ## `POST /api/ai/proxy`
 
 通用 BYOK（用户自带 API key）AI 转发接口。后端不理解业务语义（审核/精简/图表重塑等都由调用方自己决定

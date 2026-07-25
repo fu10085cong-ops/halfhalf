@@ -99,6 +99,103 @@ export class AiTimeoutError extends Error {
   }
 }
 
+export interface ChatStreamOptions {
+  /** 总时长上限（含流式读取），默认 180s——结构化整份材料比单块精简耗时长 */
+  timeoutMs?: number;
+  /**
+   * 信任 endpoint、跳过 BYOK 白名单：仅供**服务器 env 配置**的部署者自有端点
+   * （部署者控制自己的机器，可指向本地 Ollama 等）。用户传入的 endpoint 绝不能开。
+   */
+  trustEndpoint?: boolean;
+}
+
+/**
+ * OpenAI 兼容的流式对话调用（stream: true）：逐段回调 delta 文本，返回拼好的全文。
+ * 解析 SSE 帧格式 `data: {json}`，终止标记 `data: [DONE]`。
+ * 与 chatComplete 同样只认 OpenAI 形状；全程零输出时抛错，不静默返回空串。
+ */
+export async function chatCompleteStream(
+  provider: AiProviderConfig,
+  messages: ChatMessage[],
+  onDelta: (text: string) => void,
+  options?: ChatStreamOptions,
+): Promise<string> {
+  let url: URL;
+  if (options?.trustEndpoint) {
+    try {
+      url = new URL(provider.endpoint);
+    } catch {
+      throw new Error('endpoint 不是合法的 URL');
+    }
+  } else {
+    const check = validateEndpoint(provider.endpoint);
+    if (check.error || !check.url) throw new Error(check.error ?? 'endpoint 非法');
+    url = check.url;
+  }
+
+  let resp: globalThis.Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(provider.headers || {}) },
+      body: JSON.stringify({
+        model: provider.model,
+        temperature: provider.temperature ?? 0.2,
+        stream: true,
+        messages,
+      }),
+      signal: AbortSignal.timeout(options?.timeoutMs ?? 180_000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') throw new AiTimeoutError();
+    throw error;
+  }
+  if (!resp.ok || !resp.body) {
+    const snippet = (await resp.text().catch(() => '')).slice(0, 300);
+    throw new Error(`上游返回 ${resp.status}: ${snippet}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let full = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(payload);
+        } catch {
+          continue; // 半截 JSON 或注释帧：跳过，不让单帧毁掉整个流
+        }
+        const delta = (parsed as { choices?: { delta?: { content?: unknown } }[] })
+          ?.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string' && delta !== '') {
+          full += delta;
+          onDelta(delta);
+        }
+      }
+    }
+  } catch (error) {
+    // 读流中途超时也走同一个 AbortSignal，映射成统一的超时错误
+    if (error instanceof DOMException && error.name === 'TimeoutError') throw new AiTimeoutError();
+    throw error;
+  }
+  if (full === '') {
+    throw new Error('上游流式响应为空（该接口只支持 OpenAI 兼容格式）');
+  }
+  return full;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;

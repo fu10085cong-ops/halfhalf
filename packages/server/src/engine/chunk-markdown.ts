@@ -101,18 +101,78 @@ function hasDeeperHeading(markdown: string, level: number): boolean {
 
 /** 超长文字块按下一级标题递归细分；没有更深标题或已到 ###### 就原样保留 */
 function refineBlock(block: ContentBlock, level: number, maxBlockChars: number): ContentBlock[] {
-  if (
-    block.kind !== 'text' ||
-    block.markdown.length <= maxBlockChars ||
-    level >= 6 ||
-    !hasDeeperHeading(block.markdown, level)
-  ) {
+  if (block.kind !== 'text' || block.markdown.length <= maxBlockChars || level >= 6) {
+    return [block];
+  }
+  if (!hasDeeperHeading(block.markdown, level)) {
+    // 无标题的超长散文块（Word/课件粘贴的典型形态）：按段落兜底细分。不细分的话它是
+    // 一个不可拆巨型原子——最宽档独占一页、搜索兜底把字号推到上限、超出部分被裁
+    // （"首页全白 + 24pt 大字"的废纸判例）。只动**无题块**（level 0 且无标题），
+    // 带标题的超长叶子节保持原状：既有判例的粒度基线不动，结构问题交给 ⓪ 入口体检提示。
+    if (block.level === 0 && block.title === '') {
+      return splitHeadingless(block, maxBlockChars);
+    }
     return [block];
   }
   // 块自己的标题行（<= level+1）会让第一个子块保留父标题 + 细分点之前的引言，天然成为"章头块"
   return chunkOnce(block.markdown, level + 1).flatMap((sub) =>
     refineBlock(sub, level + 1, maxBlockChars)
   );
+}
+
+/**
+ * 无标题超长块的兜底细分：按空行分段，贪心打包成 ≤maxBlockChars 的块。
+ * 围栏内的空行是代码内容、不算段落分界；单段本身超长则整段保留（块是排版原子，
+ * 宁可偏大也不断句）。阅读顺序不变。
+ */
+function splitHeadingless(block: ContentBlock, maxBlockChars: number): ContentBlock[] {
+  const paras: string[] = [];
+  let cur: string[] = [];
+  let openFence: '```' | '~~~' | null = null;
+  const flushPara = () => {
+    if (cur.length > 0) {
+      paras.push(cur.join('\n'));
+      cur = [];
+    }
+  };
+  for (const line of block.markdown.split('\n')) {
+    const marker = fenceMarker(line);
+    if (marker && (openFence === null || openFence === marker)) {
+      openFence = openFence === null ? marker : null;
+      cur.push(line);
+      continue;
+    }
+    if (openFence === null && line.trim() === '') {
+      flushPara();
+      continue;
+    }
+    cur.push(line);
+  }
+  flushPara();
+  if (paras.length <= 1) return [block];
+
+  const out: ContentBlock[] = [];
+  let acc: string[] = [];
+  let accLen = 0;
+  const flushBlock = () => {
+    if (acc.length === 0) return;
+    out.push({
+      id: `${block.id}-p${out.length}`,
+      kind: 'text',
+      level: 0,
+      title: '',
+      markdown: acc.join('\n\n'),
+    });
+    acc = [];
+    accLen = 0;
+  };
+  for (const p of paras) {
+    if (accLen > 0 && accLen + p.length > maxBlockChars) flushBlock();
+    acc.push(p);
+    accLen += p.length + 2;
+  }
+  flushBlock();
+  return out;
 }
 
 /** 单轮切分（不做细分/重编号），chunkMarkdown 的实现主体 */
