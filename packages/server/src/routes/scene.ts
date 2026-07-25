@@ -14,7 +14,8 @@ import { chunkMarkdown } from '../engine/chunk-markdown.js';
 import { SCENE_PRESETS, analyzeContent, type SceneId } from '../engine/scene-presets.js';
 import { deriveLayoutParams } from '../engine/rule-engine.js';
 import { SUBJECT_RULES, suggestSubject } from '../engine/subject-rules.js';
-import { renderGridPdf, searchGridFontSize } from '../engine/grid-layout.js';
+import { renderGridPdf, resolveGrid, searchGridFontSize } from '../engine/grid-layout.js';
+import { PX_PER_MM } from '../engine/measure-blocks.js';
 import { searchAdjudicated } from '../engine/adjudicate.js';
 import { precheckFormulas } from '../engine/precheck-formulas.js';
 import { derivePdfName } from '../engine/pdf-name.js';
@@ -78,6 +79,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
 
   const targetPages = body.targetPages ?? 1;
   const orientation = body.orientation ?? 'portrait';
+  const startedAt = Date.now();
 
   try {
     const blocks = chunkMarkdown(body.markdown);
@@ -139,6 +141,58 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       }
     );
 
+    // —— 网页测试台诊断：每块的档位/落页/缩放 + 每页填充率 ——
+    // 填充率按拼装几何估算（盒面积/内容区面积）；oversized 块可能把单页推过 100%，
+    // 这本身是有用的信号，不截断。落页用拼装页码（0-based → 展示转 1-based）。
+    const { grid } = outcome;
+    const { contentHMm } = resolveGrid({ paperSize: 'A4', orientation, margins: DEFAULT_MARGINS });
+    const measById = new Map(best.measurements.map((m) => [m.id, m]));
+    const placeById = new Map(best.placements.map((p) => [p.id, p]));
+    const boxHeightMm = (id: string): number | null => {
+      const m = measById.get(id);
+      return m ? m.heightPx / PX_PER_MM + grid.gutterMm : null;
+    };
+    const pageAreas = new Map<number, number>();
+    for (const p of best.placements) {
+      const h = boxHeightMm(p.id);
+      if (h === null) continue;
+      pageAreas.set(p.page, (pageAreas.get(p.page) ?? 0) + p.span * grid.unitMm * h);
+    }
+    const pageAreaMm2 = grid.unitsX * grid.unitMm * contentHMm;
+    const fillPages = Math.max(best.pages, 1);
+    const diagnostics = {
+      grid: {
+        unitsX: grid.unitsX,
+        unitMm: Math.round(grid.unitMm * 100) / 100,
+        gutterMm: Math.round(grid.gutterMm * 100) / 100,
+        widthTiers: grid.widthTiers,
+      },
+      blocks: outcome.blocks.map((b) => {
+        const m = measById.get(b.id);
+        const p = placeById.get(b.id);
+        const h = boxHeightMm(b.id);
+        return {
+          id: b.id,
+          title: b.title || (b.kind === 'image' ? '（图片）' : '（前言）'),
+          kind: b.kind,
+          span: m?.span ?? 0,
+          page: p ? p.page + 1 : null,
+          heightMm: h === null ? null : Math.round(h * 10) / 10,
+          scale: m ? Math.round(m.scale * 100) / 100 : 1,
+          formulaScale: m ? Math.round(m.formulaScale * 100) / 100 : 1,
+          belowMinScale: m?.belowMinScale ?? false,
+          oversized: best.oversized.includes(b.id),
+        };
+      }),
+      pageFill: Array.from({ length: fillPages }, (_, i) =>
+        Math.round(((pageAreas.get(i) ?? 0) / pageAreaMm2) * 100)
+      ),
+      overallFill: Math.round(
+        ([...pageAreas.values()].reduce((a, b) => a + b, 0) / (pageAreaMm2 * fillPages)) * 100
+      ),
+      elapsedMs: Date.now() - startedAt,
+    };
+
     const jobId = randomUUID();
     // 调试版单独命名，免得和正式版下载到同一个文件名互相覆盖
     const baseName = derivePdfName(body.markdown);
@@ -174,6 +228,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         cramped: best.cramped,
         formulaIssues,
       },
+      diagnostics,
       jobId,
     });
   } catch (err) {

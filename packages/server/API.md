@@ -89,8 +89,37 @@ interface SceneRequest {
     cramped: string[];        // 跨满最大档仍需缩到可读下限以下的块 id
     formulaIssues: { blockId: string; blockTitle: string; message: string }[];  // KaTeX 预检错误
   };
+  diagnostics: {              // 网页测试台诊断（前端「块诊断」折叠面板的数据源）
+    grid: { unitsX: number; unitMm: number; gutterMm: number; widthTiers: number[] };
+    blocks: {                 // 每块一行，按阅读顺序
+      id: string; title: string; kind: 'text' | 'image';
+      span: number;           // 选定宽度档位（格数）
+      page: number | null;    // 落页（1-based；null = 未落位）
+      heightMm: number | null;    // 盒高（含 gutter）
+      scale: number;          // 块内原子最小缩放（含表格）；1 = 未缩
+      formulaScale: number;   // 独立公式单独的最小缩放（B1 口径）
+      belowMinScale: boolean; oversized: boolean;
+    }[];
+    pageFill: number[];       // 每页填充率 %（拼装几何估算；有超高块可能 >100）
+    overallFill: number;
+    elapsedMs: number;        // 本次请求全程耗时（分块→搜索→渲染）
+  };
   jobId: string;              // 拿去 GET /api/download/:jobId/pdf
 }
+```
+
+---
+
+## `GET /api/fixtures` / `GET /api/fixtures/:name`（仅开发环境）
+
+把 `packages/server/test/fixtures/*.md` 暴露给前端「测试材料」下拉，一键载入文本框，
+免去手动翻文件夹复制粘贴。`NODE_ENV=production` 时两个接口一律 404（fixtures 里是
+个人真实复习材料，且 API 尚无访问门槛）。
+
+```ts
+// GET /api/fixtures            → { fixtures: { name: string; sizeKb: number }[] }
+// GET /api/fixtures/:name      → { name: string; markdown: string }
+// :name 只接受 [\w.-]+\.md，路径穿越一律 400
 ```
 
 ---

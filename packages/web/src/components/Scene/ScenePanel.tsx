@@ -4,8 +4,15 @@
  * - 场景默认"自动推荐"，结果里显示推荐理由，用户可改选后重排
  * - 结果：内容统计 / 推荐场景 / 字号页数 / 各类警告 / PDF 内嵌预览 + 下载
  */
-import { useRef, useState } from 'react';
-import type { SceneId, SceneResult, BlockSuggestion, AiCompressResponse, AiCompressSummary } from '../../types';
+import { useEffect, useRef, useState } from 'react';
+import type {
+  SceneId,
+  SceneResult,
+  BlockSuggestion,
+  AiCompressResponse,
+  AiCompressSummary,
+  FixtureInfo,
+} from '../../types';
 
 /** BYOK 配置存本地浏览器（localStorage），不上传服务器；key 也只在本机 */
 const AI_KEYS = { endpoint: 'hh.ai.endpoint', model: 'hh.ai.model', key: 'hh.ai.key' } as const;
@@ -45,6 +52,26 @@ const diffCol: React.CSSProperties = {
   maxHeight: 160,
   overflow: 'auto',
 };
+
+/** 诊断表/历史表的单元格样式 */
+const cellTh: React.CSSProperties = {
+  border: '1px solid #e2e8f0',
+  padding: '2px 6px',
+  background: '#f8fafc',
+  textAlign: 'left',
+  whiteSpace: 'nowrap',
+};
+const cellTd: React.CSSProperties = { border: '1px solid #e2e8f0', padding: '2px 6px' };
+
+/** 会话内的一次生成记录——改一个参数再生成即可对照（网页版单变量 A/B） */
+interface RunRecord {
+  config: string;
+  fontSize: number;
+  pages: number;
+  ok: boolean;
+  fill: number | null;
+  secs: string | null;
+}
 
 const SCENE_OPTIONS: { value: SceneId | 'auto'; label: string }[] = [
   { value: 'auto', label: '自动推荐' },
@@ -113,6 +140,35 @@ export default function ScenePanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // —— 测试台：fixtures 速载 + 会话内历史对比 ——
+  const [fixtures, setFixtures] = useState<FixtureInfo[]>([]);
+  const [fixtureSel, setFixtureSel] = useState('');
+  const [runs, setRuns] = useState<RunRecord[]>([]);
+
+  useEffect(() => {
+    // 生产环境该接口 404，静默隐藏整个速载区
+    fetch('/api/fixtures')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.fixtures) setFixtures(d.fixtures as FixtureInfo[]);
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadFixture = async () => {
+    if (!fixtureSel) return;
+    try {
+      const r = await fetch(`/api/fixtures/${encodeURIComponent(fixtureSel)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setMarkdown(d.markdown as string);
+      setResult(null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   // —— AI 语义精简（BYOK）——
   const [showAi, setShowAi] = useState(false);
   const [aiEndpoint, setAiEndpoint] = useState(() =>
@@ -162,7 +218,28 @@ export default function ScenePanel() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-      setResult(data as SceneResult);
+      const r = data as SceneResult;
+      setResult(r);
+      // 记入会话历史（带当时的参数指纹），供改参数后对照
+      setRuns((prev) => [
+        ...prev,
+        {
+          config: [
+            scene === 'auto' ? '自动' : scene,
+            subject || null,
+            `目标${targetPages}页`,
+            orientation === 'landscape' ? '横' : '竖',
+            allowReorder ? '乱序' : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          fontSize: r.fontSize,
+          pages: r.pages,
+          ok: r.withinTargetPages,
+          fill: r.diagnostics?.overallFill ?? null,
+          secs: r.diagnostics ? (r.diagnostics.elapsedMs / 1000).toFixed(1) : null,
+        },
+      ]);
 
       const pdfResp = await fetch(`/api/download/${(data as SceneResult).jobId}/pdf`);
       if (!pdfResp.ok) throw new Error('PDF 下载失败');
@@ -355,6 +432,25 @@ export default function ScenePanel() {
             AI 设置 {showAi ? '▴' : '▾'}
           </button>
         </div>
+
+        {/* 测试材料速载（生产环境接口 404，此区自动隐藏） */}
+        {fixtures.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+            <span style={{ color: '#64748b' }}>测试材料</span>
+            <select value={fixtureSel} onChange={(e) => setFixtureSel(e.target.value)}>
+              <option value="">选择 fixture…</option>
+              {fixtures.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.name}（{f.sizeKb}KB）
+                </option>
+              ))}
+            </select>
+            <button onClick={loadFixture} disabled={!fixtureSel}>
+              载入（替换文本框）
+            </button>
+            <span style={{ color: '#94a3b8' }}>来自 packages/server/test/fixtures</span>
+          </div>
+        )}
 
         {showAi && (
           <div
@@ -549,7 +645,128 @@ export default function ScenePanel() {
                 ⚠️ {w}
               </div>
             ))}
+            {result.diagnostics && (
+              <details style={{ fontSize: 12, marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer' }}>
+                  块诊断：{result.diagnostics.blocks.length} 块 · 总填充{' '}
+                  <b>{result.diagnostics.overallFill}%</b> · 耗时{' '}
+                  {(result.diagnostics.elapsedMs / 1000).toFixed(1)}s · 网格{' '}
+                  {result.diagnostics.grid.unitsX} 列（格 {result.diagnostics.grid.unitMm}mm · 留白{' '}
+                  {result.diagnostics.grid.gutterMm}mm）
+                </summary>
+                {/* 每页填充条：低于 60% 灰（松）、正常蓝、超 100%（有超高块）红 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '6px 0' }}>
+                  {result.diagnostics.pageFill.map((f, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 44 }}>第{i + 1}页</span>
+                      <div style={{ flex: 1, maxWidth: 260, height: 10, background: '#e2e8f0', borderRadius: 2 }}>
+                        <div
+                          style={{
+                            width: `${Math.min(f, 100)}%`,
+                            height: '100%',
+                            borderRadius: 2,
+                            background: f > 100 ? '#dc2626' : f < 60 ? '#94a3b8' : '#3b82f6',
+                          }}
+                        />
+                      </div>
+                      <span>{f}%</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        {['块', '类型', '宽(格)', '页', '高(mm)', '缩放', '公式缩放', '提示'].map((h) => (
+                          <th key={h} style={cellTh}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.diagnostics.blocks.map((b) => (
+                        <tr
+                          key={b.id}
+                          style={{
+                            background: b.oversized ? '#fee2e2' : b.belowMinScale ? '#fef3c7' : undefined,
+                          }}
+                        >
+                          <td style={cellTd} title={b.id}>
+                            {b.title}
+                          </td>
+                          <td style={cellTd}>{b.kind === 'image' ? '图' : '文'}</td>
+                          <td style={cellTd}>{b.span}</td>
+                          <td style={cellTd}>{b.page ?? '—'}</td>
+                          <td style={cellTd}>{b.heightMm ?? '—'}</td>
+                          <td style={cellTd}>{b.scale < 1 ? `×${b.scale}` : '—'}</td>
+                          <td style={cellTd}>{b.formulaScale < 1 ? `×${b.formulaScale}` : '—'}</td>
+                          <td style={cellTd}>
+                            {b.oversized ? '⛔ 超高截断' : b.belowMinScale ? '⚠️ 缩过可读限' : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
           </div>
+        )}
+
+        {/* 会话历史：每次生成一行，改一个参数再生成即可对照（Δ 相对上一行） */}
+        {runs.length > 0 && (
+          <details open={runs.length > 1} style={{ fontSize: 12 }}>
+            <summary style={{ cursor: 'pointer' }}>
+              本次会话历史（{runs.length} 次）
+              <button
+                style={{ marginLeft: 8 }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setRuns([]);
+                }}
+              >
+                清空
+              </button>
+            </summary>
+            <div style={{ maxHeight: 140, overflow: 'auto', marginTop: 4 }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    {['#', '配置', '字号', '页数', '达标', '填充', '耗时'].map((h) => (
+                      <th key={h} style={cellTh}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((r, i) => {
+                    const prev = i > 0 ? runs[i - 1] : null;
+                    const d = prev ? Math.round((r.fontSize - prev.fontSize) * 10) / 10 : 0;
+                    return (
+                      <tr key={i}>
+                        <td style={cellTd}>{i + 1}</td>
+                        <td style={cellTd}>{r.config}</td>
+                        <td style={cellTd}>
+                          <b>{r.fontSize}pt</b>
+                          {prev && d !== 0 && (
+                            <span style={{ color: d > 0 ? '#15803d' : '#b91c1c', marginLeft: 4 }}>
+                              {d > 0 ? `▲+${d}` : `▼${d}`}
+                            </span>
+                          )}
+                        </td>
+                        <td style={cellTd}>{r.pages}</td>
+                        <td style={cellTd}>{r.ok ? '✓' : '✗'}</td>
+                        <td style={cellTd}>{r.fill !== null ? `${r.fill}%` : '—'}</td>
+                        <td style={cellTd}>{r.secs !== null ? `${r.secs}s` : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
       </div>
 
