@@ -25,9 +25,9 @@ import { GRID_DEFAULTS } from './grid-layout.js';
 import type { SubjectRule } from './subject-rules.js';
 
 export interface RuleTraceEntry {
-  /** RULES.md 的规则编号（H=硬约束，S=软偏好） */
-  rule: 'H1' | 'H2' | 'H3' | 'H4' | 'S1' | 'S2' | 'S3';
-  kind: 'hard' | 'soft';
+  /** RULES.md 的规则编号（H=硬约束，S=软偏好，B=模糊带裁决） */
+  rule: 'H1' | 'H2' | 'H3' | 'H4' | 'S1' | 'S2' | 'S3' | 'B1';
+  kind: 'hard' | 'soft' | 'adjudication';
   /** 人话：触发条件 + 实际钳制/选择 */
   detail: string;
 }
@@ -51,18 +51,60 @@ export interface RuleOutcome {
   warning?: string;
   /** 最接近的预设：前端展示、"用户可改"下拉框的默认项 */
   sceneEquivalent: SceneId;
+  /**
+   * B1 模糊带双跑裁决（RULES.md §4.5）：公式密度落在 [formulaBandLow, formulaBandHigh)
+   * 且数量达标时，"要不要保护公式"这个判断静态规则拿不准（密度只是宽度的粗代理），
+   * 于是给出另一侧的候选参数——搜索层把两套都真跑一遍，按实测裁决（engine/adjudicate.ts）。
+   * 带外此字段缺省，行为与从前完全一致。
+   */
+  adjudication?: {
+    /** 另一侧候选（primary 触发 H1 则它不触发，反之亦然） */
+    alternative: RuleOutcome;
+    detail: string;
+  };
 }
 
 /** 密度由紧到松的全序——硬约束的"密度上界"（≤ 某档）按此索引取 min */
 const DENSITY_ORDER: readonly Density[] = ['cram', 'compact', 'normal', 'loose'];
 
-export function deriveLayoutParams(
+export interface DeriveOpts {
+  allowReorder?: boolean;
+  /** 用户声明的学科（学科层补充特征来源；识别建议不算声明，见 subject-rules.ts） */
+  subject?: SubjectRule;
+}
+
+export function deriveLayoutParams(stats: ContentStats, opts: DeriveOpts = {}): RuleOutcome {
+  const t = SCENE_THRESHOLDS;
+  const primary = deriveCore(stats, opts);
+
+  // 模糊带检测：带内生成"翻转公式保护"的另一侧候选，交由搜索层双跑裁决
+  const displayPer1000 =
+    stats.charCount > 0 ? (stats.displayFormulaCount / stats.charCount) * 1000 : 0;
+  const inBand =
+    stats.displayFormulaCount >= t.formulaMinDisplay &&
+    displayPer1000 >= t.formulaBandLow &&
+    displayPer1000 < t.formulaBandHigh;
+  if (inBand) {
+    const primaryProtects = displayPer1000 >= t.displayPer1000;
+    const alternative = deriveCore(stats, opts, !primaryProtects);
+    // 两侧推出同样的参数就没什么可裁决的（例如公式保护被其他硬约束顺带满足）
+    if (JSON.stringify(alternative.params) !== JSON.stringify(primary.params)) {
+      primary.adjudication = {
+        alternative,
+        detail:
+          `独立公式密度 ${displayPer1000.toFixed(1)}/千字落在模糊带 [${t.formulaBandLow},${t.formulaBandHigh})` +
+          `——密度是公式宽度的粗代理，静态规则拿不准该保护公式还是要密度，两套参数都实跑后按实测裁决`,
+      };
+    }
+  }
+  return primary;
+}
+
+function deriveCore(
   stats: ContentStats,
-  opts: {
-    allowReorder?: boolean;
-    /** 用户声明的学科（学科层补充特征来源；识别建议不算声明，见 subject-rules.ts） */
-    subject?: SubjectRule;
-  } = {}
+  opts: DeriveOpts,
+  /** 模糊带用：强制指定"是否按公式密集处理"，缺省按静态阈值判 */
+  forceFormulaHeavy?: boolean
 ): RuleOutcome {
   const t = SCENE_THRESHOLDS;
   const trace: RuleTraceEntry[] = [];
@@ -70,7 +112,8 @@ export function deriveLayoutParams(
   const displayPer1000 =
     stats.charCount > 0 ? (stats.displayFormulaCount / stats.charCount) * 1000 : 0;
   const formulaHeavy =
-    displayPer1000 >= t.displayPer1000 && stats.displayFormulaCount >= t.formulaMinDisplay;
+    forceFormulaHeavy ??
+    (displayPer1000 >= t.displayPer1000 && stats.displayFormulaCount >= t.formulaMinDisplay);
   const codeHeavy = stats.codeBlockCount >= t.codeMinBlocks;
   const imageHeavy =
     stats.imageBlockCount >= t.visualImageCount ||

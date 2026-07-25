@@ -37,6 +37,12 @@ export interface BlockMeasurement {
    * 图片块：实际显示宽度 / 图片自然宽度（1 = 原尺寸显示，<1 = 被 max-width 压缩）。
    */
   scale: number;
+  /**
+   * 块内**独立公式**（.katex-display）的最小缩放系数，1 = 没有公式或公式没被缩。
+   * 与 scale 分开记：scale 混着表格（表格允许缩，公式的可读性另算），
+   * B1 双跑裁决按它算"公式有效字号"（adjudicate.ts）。
+   */
+  formulaScale: number;
   /** true = 即使跨满 maxSpan，内容仍需缩到 minScale 以下才能塞下（可读性存疑，上层应提示） */
   belowMinScale: boolean;
 }
@@ -167,11 +173,15 @@ ${containers.join('\n')}
       const raw = await page.evaluate(() => {
         const els = Array.from(document.querySelectorAll<HTMLElement>('.measure-block'));
         return els.map((el) => {
-          // 该容器内原子的最小缩放系数（没有被缩放的原子 = 1）
+          // 该容器内原子的最小缩放系数（没有被缩放的原子 = 1）；公式单独记一份
           let minScale = 1;
+          let minFormulaScale = 1;
           for (const atom of el.querySelectorAll<HTMLElement>('[data-hh-scale]')) {
             const s = Number(atom.dataset.hhScale);
             if (s < minScale) minScale = s;
+            if (atom.classList.contains('katex-display') && s < minFormulaScale) {
+              minFormulaScale = s;
+            }
           }
           // 容器内图片的最大自然宽度（CSS px），图片块按它吸附宽度档位
           let imgNaturalW = 0;
@@ -183,6 +193,7 @@ ${containers.join('\n')}
             span: Number(el.dataset.span || 1),
             heightPx: el.getBoundingClientRect().height,
             scale: minScale,
+            formulaScale: minFormulaScale,
             imgNaturalW,
           };
         });
@@ -207,6 +218,7 @@ ${containers.join('\n')}
             span: chosen.span,
             heightPx: chosen.heightPx,
             scale: Math.min(1, spanWidth(chosen.span) / Math.max(naturalW, 1)),
+            formulaScale: 1,
             belowMinScale: false,
           });
           continue;
@@ -226,6 +238,7 @@ ${containers.join('\n')}
           span: chosen.span,
           heightPx: chosen.heightPx,
           scale: chosen.scale,
+          formulaScale: chosen.formulaScale,
           belowMinScale: fits.length === 0,
         });
       }

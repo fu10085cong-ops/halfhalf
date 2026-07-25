@@ -87,6 +87,27 @@ test('poli-econ.md（真实）：统计口径锁定——公式 32、表 5、正
   assert.ok(per1000 < 5, `本判例的价值就在公式密度低于保护线（实测 ${per1000.toFixed(1)}），若统计口径变了需重新校准`);
 });
 
+// ── B1 模糊带（RULES.md §4.5）：带内给出双候选交实测裁决，带外单跑不变 ──
+
+test('模糊带：poli-econ(4.9/千) 主判 cram、备选 formula；slim(5.6/千) 主判 formula、备选 cram', () => {
+  const orig = deriveLayoutParams(statsOf('poli-econ.md'));
+  assert.equal(orig.sceneEquivalent, 'text-cram');
+  assert.ok(orig.adjudication, '4.9 在带内应有备选');
+  assert.equal(orig.adjudication!.alternative.sceneEquivalent, 'formula');
+
+  const slim = deriveLayoutParams(statsOf('poli-econ-slim.md'));
+  assert.equal(slim.sceneEquivalent, 'formula');
+  assert.ok(slim.adjudication, '5.6 在带内应有备选');
+  assert.equal(slim.adjudication!.alternative.sceneEquivalent, 'text-cram');
+  assert.equal(slim.adjudication!.alternative.adjudication, undefined, '备选不得递归携带裁决');
+});
+
+test('模糊带外单跑不变：test.md(12.5) 静态定死 formula；os-large(1.2)、random-topic(数量不足) 无备选', () => {
+  assert.equal(deriveLayoutParams(statsOf('test.md')).adjudication, undefined);
+  assert.equal(deriveLayoutParams(statsOf('os-large.md')).adjudication, undefined);
+  assert.equal(deriveLayoutParams(statsOf('random-topic.md')).adjudication, undefined);
+});
+
 test('politics.md：纯文字材料无刚性原子', () => {
   const s = statsOf('politics.md');
   assert.equal(s.displayFormulaCount, 0);

@@ -122,6 +122,12 @@ export const SCENE_THRESHOLDS = {
    *  也不能推给会把公式缩小的 cram；random-topic（4.6/千字、3 个）仍是 balanced */
   displayPer1000: 5,
   formulaMinDisplay: 4,
+  /** H1 模糊带（个/千字）：密度落在 [low, high) 且数量达标时，5/千字的静态线只是"倾向"，
+   *  最终参数由 B1 双跑实测裁决（RULES.md §4.5：poli-econ AI 精简后 4.9→5.9 跨线、
+   *  字号 8pt→6pt 的真实事故催生此机制——短公式材料被密度这个粗代理误保护）。
+   *  带外仍是确定性单跑。带边界数值 ○ 占位，等更多真材料校准 */
+  formulaBandLow: 3,
+  formulaBandHigh: 8,
   /** code（RULES.md 的 H4）：代码块数 ≥ 此值。判例：sample.md（5 个代码块）应命中 code；
    *  random-topic（3 个，但以文字为主）不该被代码绑架 —— 故取 4 */
   codeMinBlocks: 4,

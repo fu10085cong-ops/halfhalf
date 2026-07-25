@@ -17,7 +17,26 @@ let browserPromise: Promise<Browser> | null = null;
 
 function getSharedBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    browserPromise = chromium.launch({ headless: true });
+    const p = chromium.launch({ headless: true }).then(
+      (browser) => {
+        // 浏览器意外死亡（崩溃/被系统回收/子进程被杀）时清掉缓存并复位并发名额，
+        // 下一次调用自动重新拉起——否则连接池攥着死浏览器，之后所有请求
+        // 都报 "browser has been closed"，只能重启后端才能恢复（真实事故，2026-07-23）
+        browser.on('disconnected', () => {
+          if (browserPromise === p) {
+            browserPromise = null;
+            resetSlots();
+          }
+        });
+        return browser;
+      },
+      (err) => {
+        // 启动失败也不能把 rejected promise 缓存住，否则一次失败永久失败
+        if (browserPromise === p) browserPromise = null;
+        throw err;
+      }
+    );
+    browserPromise = p;
   }
   return browserPromise;
 }
@@ -38,7 +57,21 @@ function acquireSlot(): Promise<void> {
 function releaseSlot(): void {
   const next = waiters.shift();
   if (next) next();
-  else activePages--;
+  // 下限钳到 0：浏览器死亡复位后，死 page 迟到的 close 事件不能把名额减成负数
+  else activePages = Math.max(0, activePages - 1);
+}
+
+/**
+ * 浏览器死亡后的名额复位：死浏览器的 page 未必都来得及触发 close 事件释放名额，
+ * 不复位的话名额会永久泄漏、排队者饿死。清零后按上限重新放行排队中的请求
+ * （它们拿到名额后会经 getSharedBrowser 触发浏览器重启）。
+ */
+function resetSlots(): void {
+  activePages = 0;
+  while (waiters.length > 0 && activePages < MAX_PAGES) {
+    activePages++;
+    waiters.shift()!();
+  }
 }
 
 /** 在共享浏览器上开一个新 page 执行 fn，结束后关 page（浏览器保持温热） */

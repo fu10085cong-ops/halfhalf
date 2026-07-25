@@ -15,6 +15,7 @@ import { SCENE_PRESETS, analyzeContent, type SceneId } from '../engine/scene-pre
 import { deriveLayoutParams } from '../engine/rule-engine.js';
 import { SUBJECT_RULES, suggestSubject } from '../engine/subject-rules.js';
 import { renderGridPdf, searchGridFontSize } from '../engine/grid-layout.js';
+import { searchAdjudicated } from '../engine/adjudicate.js';
 import { precheckFormulas } from '../engine/precheck-formulas.js';
 import { derivePdfName } from '../engine/pdf-name.js';
 import { saveJob } from '../engine/job-store.js';
@@ -82,44 +83,46 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
     const blocks = chunkMarkdown(body.markdown);
     const stats = analyzeContent(blocks);
     const subject = body.subject ? SUBJECT_RULES[body.subject] : undefined;
-    const derived = deriveLayoutParams(stats, {
+    const staticDerived = deriveLayoutParams(stats, {
       allowReorder: body.allowReorder === true,
       subject,
     });
 
-    // 自动模式用规则引擎的交集参数（多类刚性原子同时保护）；
-    // 用户强制指定预设则以预设为准（预设 = 命名快捷方式，用户的选择就是覆盖）
     const auto = !body.scene || body.scene === 'auto';
-    const usedScene: SceneId = auto ? derived.sceneEquivalent : (body.scene as SceneId);
-    const preset = SCENE_PRESETS[usedScene];
-    const params = auto
-      ? derived.params
-      : {
-          density: preset.density,
-          strategy: preset.strategy,
-          minScale: preset.minScale,
-          maxAspect: preset.maxAspect,
-          gutterMm: preset.gutterMm,
-          widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
-          backfill: body.allowReorder === true,
-        };
-
     const formulaIssues = await precheckFormulas(blocks);
 
-    const outcome = await searchGridFontSize({
+    const baseSearch = {
       markdown: body.markdown,
       targetPages,
-      paperSize: 'A4',
+      paperSize: 'A4' as const,
       orientation,
       margins: DEFAULT_MARGINS,
-      density: params.density,
-      strategy: params.strategy,
-      minScale: params.minScale,
-      maxAspect: params.maxAspect,
-      gutterMm: params.gutterMm,
-      widthTiers: params.widthTiers ? [...params.widthTiers] : undefined,
-      backfill: params.backfill,
-    });
+    };
+
+    // 自动模式用规则引擎的交集参数（多类刚性原子同时保护），模糊带内双跑实测裁决（B1）；
+    // 用户强制指定预设则以预设为准（预设 = 命名快捷方式，用户的选择就是覆盖，不裁决）
+    let derived = staticDerived;
+    let outcome;
+    if (auto) {
+      const adjudicated = await searchAdjudicated(baseSearch, staticDerived);
+      derived = adjudicated.derived;
+      outcome = adjudicated.outcome;
+    } else {
+      const preset = SCENE_PRESETS[body.scene as SceneId];
+      outcome = await searchGridFontSize({
+        ...baseSearch,
+        density: preset.density,
+        strategy: preset.strategy,
+        minScale: preset.minScale,
+        maxAspect: preset.maxAspect,
+        gutterMm: preset.gutterMm,
+        widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
+        backfill: body.allowReorder === true,
+      });
+    }
+    const usedScene: SceneId = auto ? derived.sceneEquivalent : (body.scene as SceneId);
+    const preset = SCENE_PRESETS[usedScene];
+    const renderDensity = auto ? derived.params.density : preset.density;
     const { best } = outcome;
 
     const { pdfBuffer, pageCount } = await renderGridPdf(
@@ -131,7 +134,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         orientation,
         margins: DEFAULT_MARGINS,
         fontSize: best.fontSize,
-        density: params.density,
+        density: renderDensity,
         debug: body.debug === true,
       }
     );

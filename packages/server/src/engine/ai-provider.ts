@@ -17,6 +17,7 @@ export const ALLOWED_HOSTS = new Set([
   'api.openai.com',
   'api.anthropic.com',
   'generativelanguage.googleapis.com',
+  'api.deepseek.com',
 ]);
 
 function isAllowedHost(hostname: string): boolean {

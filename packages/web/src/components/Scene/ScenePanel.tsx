@@ -535,8 +535,8 @@ export default function ScenePanel() {
             )}
             {/* rule trace：自动模式下参数就是这些规则算出来的（用户强制预设时仅供参考） */}
             {(result.trace ?? []).map((e, i) => (
-              <div key={i} style={{ color: '#555' }}>
-                {e.kind === 'hard' ? '🔒' : '·'} [{e.rule}] {e.detail}
+              <div key={i} style={{ color: e.kind === 'adjudication' ? '#7c3aed' : '#555' }}>
+                {e.kind === 'hard' ? '🔒' : e.kind === 'adjudication' ? '⚖️' : '·'} [{e.rule}] {e.detail}
               </div>
             ))}
             <div>

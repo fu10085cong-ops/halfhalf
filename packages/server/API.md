@@ -70,8 +70,8 @@ interface SceneRequest {
     warning?: string;         // 多类刚性原子并存的提示（保护已同时生效/取交集，但空间更紧）
   };
   trace: {                    // rule trace：实际触发的排版规则记账（RULES.md §三）
-    rule: 'H1' | 'H2' | 'H4' | 'S1' | 'S2' | 'S3';  // H=硬约束，S=软偏好
-    kind: 'hard' | 'soft';
+    rule: 'H1' | 'H2' | 'H3' | 'H4' | 'S1' | 'S2' | 'S3' | 'B1';  // H=硬约束，S=软偏好，B1=模糊带双跑裁决
+    kind: 'hard' | 'soft' | 'adjudication';
     detail: string;           // 人话：触发条件 + 实际钳制
   }[];                        // 自动模式的参数由 trace 决定；强制预设时仍返回（仅供参考）
   subject: string | null;     // 生效的学科声明（null = 未声明）
@@ -328,7 +328,7 @@ interface AiProxyRequest {
 }
 ```
 
-**当前白名单域名**：`api.openai.com`、`api.anthropic.com`、`generativelanguage.googleapis.com`。
+**当前白名单域名**：`api.openai.com`、`api.anthropic.com`、`generativelanguage.googleapis.com`、`api.deepseek.com`。
 其他域名会被 `400` 拒绝——如果要接入新的服务商，需要改后端代码加白名单，前端传任意域名都不会生效。
 
 ### 响应
