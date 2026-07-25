@@ -1,0 +1,16 @@
+# 单核 / 1G 内存服务器的运行配置。
+# 推荐用法（1G 机器别在本机构建）：开发机/CI 构建并推镜像，服务器 compose 只 pull 运行。
+#   本机测试：docker compose up --build
+#   服务器：把下面 image 换成你推到仓库的镜像，注释掉 build，再 docker compose up -d
+services:
+  halfhalf:
+    image: halfhalf:latest
+    build: .                    # 服务器上部署时删掉这行，改用已推送的镜像
+    ports:
+      - "80:3000"               # 对外 80 → 容器内 3000；需要 HTTPS 就在前面挂 Caddy 反代
+    environment:
+      HALFHALF_MAX_PAGES: "1"
+      HALFHALF_CHROMIUM_NO_SANDBOX: "1"
+    mem_limit: 900m             # 给系统留余量，别让容器吃满 1G
+    memswap_limit: 2g           # 允许用到 swap，吸收单次渲染的内存尖峰（务必先在宿主建 swap）
+    restart: unless-stopped

@@ -41,19 +41,29 @@ export async function createRenderContext(
   params: RenderParams
 ): Promise<RenderContext> {
   const page = await openPage();
+  // openPage 已占用一个并发名额（挂在 page 的 close 事件上释放）。此后任何一步抛错
+  // （page.goto 失败、大文档 OOM 导致 renderMermaidDiagrams 拒绝）都必须在这里 close 掉
+  // page 归还名额、清掉已写的临时文件——否则调用方的 try/finally 只包住赋值之后的部分，
+  // 名额与临时文件会永久泄漏，累计到 MAX_PAGES 后端就假死（真实事故同类，见 browser-pool）。
+  let tempFilePath: string | undefined;
+  try {
+    const paper = getPaperDimensionsMm(params.paperSize, params.orientation);
+    const contentWidthMm = paper.width - params.margins.left - params.margins.right;
+    const contentHeightMm = paper.height - params.margins.top - params.margins.bottom;
 
-  const paper = getPaperDimensionsMm(params.paperSize, params.orientation);
-  const contentWidthMm = paper.width - params.margins.left - params.margins.right;
-  const contentHeightMm = paper.height - params.margins.top - params.margins.bottom;
+    const fullHtml = wrapHtml(bodyHtml, contentWidthMm, contentHeightMm, params.columns);
+    tempFilePath = path.join(os.tmpdir(), `halfhalf-${randomUUID()}.html`);
+    await fs.writeFile(tempFilePath, fullHtml, 'utf-8');
 
-  const fullHtml = wrapHtml(bodyHtml, contentWidthMm, contentHeightMm, params.columns);
-  const tempFilePath = path.join(os.tmpdir(), `halfhalf-${randomUUID()}.html`);
-  await fs.writeFile(tempFilePath, fullHtml, 'utf-8');
+    await page.goto(`file://${tempFilePath}`, { waitUntil: 'domcontentloaded' });
+    await renderMermaidDiagrams(page);
 
-  await page.goto(`file://${tempFilePath}`, { waitUntil: 'domcontentloaded' });
-  await renderMermaidDiagrams(page);
-
-  return { page, tempFilePath };
+    return { page, tempFilePath };
+  } catch (err) {
+    await page.close().catch(() => {}); // 触发 close→releaseSlot，归还并发名额
+    if (tempFilePath) await fs.unlink(tempFilePath).catch(() => {});
+    throw err;
+  }
 }
 
 function wrapHtml(

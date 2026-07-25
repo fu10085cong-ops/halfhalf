@@ -15,9 +15,23 @@ import { chromium, type Browser, type Page } from 'playwright';
 
 let browserPromise: Promise<Browser> | null = null;
 
+/**
+ * 容器/受限环境下的 Chromium 启动参数：
+ * - --disable-dev-shm-usage：Docker 默认 /dev/shm 仅 64MB，Chromium 会因共享内存不足崩溃，
+ *   改用 /tmp 兜底。始终开，安全。
+ * - --disable-gpu：无头服务器无 GPU，省一点资源。始终开，安全。
+ * - --no-sandbox：以 root 跑容器时沙箱失效、无法启动，需 env 显式放开
+ *   （HALFHALF_CHROMIUM_NO_SANDBOX=1）。只渲染用户自己的内容，单用户场景可接受。
+ */
+function chromiumLaunchArgs(): string[] {
+  const args = ['--disable-dev-shm-usage', '--disable-gpu'];
+  if (process.env.HALFHALF_CHROMIUM_NO_SANDBOX === '1') args.push('--no-sandbox');
+  return args;
+}
+
 function getSharedBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    const p = chromium.launch({ headless: true }).then(
+    const p = chromium.launch({ headless: true, args: chromiumLaunchArgs() }).then(
       (browser) => {
         // 浏览器意外死亡（崩溃/被系统回收/子进程被杀）时清掉缓存并复位并发名额，
         // 下一次调用自动重新拉起——否则连接池攥着死浏览器，之后所有请求

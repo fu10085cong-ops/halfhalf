@@ -1,0 +1,15 @@
+# 构建上下文排除项：依赖在镜像内重装，产物在镜像内重建，本地这些别带进去
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.gitignore
+samples
+*.pdf
+**/*.pdf
+playwright-report
+.DS_Store
+**/.DS_Store
+.claude
+EXPERIMENT.md
