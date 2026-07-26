@@ -133,6 +133,8 @@ export default function ScenePanel() {
   // 应急用户会陷进"生成→看警告→改页数→重来"的循环
   const [targetPages, setTargetPages] = useState(2);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // 四边统一页边距 mm。6mm 比默认 10mm 白捡约 7.6% 版面;4mm 贴近多数打印机的物理极限
+  const [marginMm, setMarginMm] = useState(10);
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [debug, setDebug] = useState(false);
@@ -221,6 +223,7 @@ export default function ScenePanel() {
           debug,
           allowReorder,
           subject: subject || undefined,
+          marginMm,
         }),
       });
       const data = await resp.json();
@@ -237,6 +240,7 @@ export default function ScenePanel() {
             `目标${targetPages}页`,
             orientation === 'landscape' ? '横' : '竖',
             allowReorder ? '乱序' : null,
+            marginMm !== 10 ? `边距${marginMm}mm` : null,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -455,6 +459,19 @@ export default function ScenePanel() {
               >
                 <option value="portrait">竖版</option>
                 <option value="landscape">横版</option>
+              </select>
+            </label>
+            <label title="四边统一页边距。窄边距 = 白捡版面(6mm 约 +7.6%),但太窄可能被打印机裁掉——4mm 请先确认你的打印机支持">
+              边距
+              <select
+                value={marginMm}
+                onChange={(e) => setMarginMm(Number(e.target.value))}
+                style={{ marginLeft: 4 }}
+              >
+                <option value={10}>标准 10mm</option>
+                <option value={8}>紧 8mm</option>
+                <option value={6}>窄 6mm</option>
+                <option value={4}>极窄 4mm（看打印机）</option>
               </select>
             </label>
             <label title="在 PDF 上叠加 24 列网格线、每个块的方框和标签；不改变排版本身">

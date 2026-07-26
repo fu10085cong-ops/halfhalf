@@ -54,6 +54,8 @@ export interface SceneRequest {
   orientation?: ResolvedOrientation;
   /** true = PDF 叠加网格线/块方框/标签，用于看清排版（不改变排版本身） */
   debug?: boolean;
+  /** 四边统一页边距 mm（3~25），省略 = 默认 10 */
+  marginMm?: number;
 }
 
 export interface SceneStats {

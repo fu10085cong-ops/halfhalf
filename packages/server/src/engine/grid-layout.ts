@@ -178,6 +178,21 @@ export async function renderGridPdf(
   });
 }
 
+/**
+ * 一个试探能否当"达标"候选：页数进目标只是必要条件，**内容完整**才算数——
+ * 有超高截断块 = 有内容被页底裁掉，页数再漂亮也是假密度（真实判例：数据分析材料
+ * 横版 12.5pt，工具对比表超页高、Tableau 一整行被裁，搜索却因"2 页达标"选了它）。
+ * gateOversized=false 表示最小字号下就存在超高块（巨图等，字号救不了）——
+ * 此时不再用超高一票否决，退回"尽力交付 + oversized 警告"的老行为。
+ */
+export function isAcceptableTrial(
+  t: Pick<GridTrial, 'pages' | 'oversized'>,
+  effectiveTarget: number,
+  gateOversized: boolean
+): boolean {
+  return t.pages <= effectiveTarget && (!gateOversized || t.oversized.length === 0);
+}
+
 export async function searchGridFontSize(
   params: GridSearchParams,
   onProgress?: (t: { fontSize: number; pages: number }) => void
@@ -254,12 +269,15 @@ export async function searchGridFontSize(
   record(lowTrial);
   let best = lowTrial;
   const effectiveTarget = Math.max(params.targetPages, lowTrial.pages);
+  // 块高随字号单调增长：最小字号都超高的块任何字号都救不了（gate 关掉、带警告尽力交付）；
+  // 否则超高截断一律不许当达标结果——字号加大加出来的截断必须被二分收缩修掉
+  const gateOversized = lowTrial.oversized.length === 0;
 
   {
     // 先探上界：mid 吸附在网格上永远取不到 hi 本身，内容很少时 24pt 直接命中就不用再搜
     const highTrial = await trial(hi);
     record(highTrial);
-    if (highTrial.pages <= effectiveTarget) {
+    if (isAcceptableTrial(highTrial, effectiveTarget, gateOversized)) {
       best = highTrial;
     } else {
       // maxIterations 是防御性兜底（精度钳制后区间每轮至少缩 0.5pt，正常几轮就收敛）
@@ -267,8 +285,8 @@ export async function searchGridFontSize(
         const mid = Math.round(((lo + hi) / 2) * 2) / 2; // 对齐 0.5pt
         const t = await trial(mid);
         record(t);
-        if (t.pages <= effectiveTarget) {
-          best = t; // 页数达标，记录并尝试更大字号
+        if (isAcceptableTrial(t, effectiveTarget, gateOversized)) {
+          best = t; // 达标（页数 + 内容完整），记录并尝试更大字号
           lo = mid;
         } else {
           hi = mid;

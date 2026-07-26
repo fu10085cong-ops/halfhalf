@@ -43,6 +43,11 @@ interface SceneRequest {
    * 响应里的 subjectSuggestion 只是关键词识别建议，用户选了才算声明。
    */
   subject?: string;
+  /**
+   * 四边统一页边距 mm（3~25），省略 = 默认 10。降到 6mm 白捡约 7.6% 版面
+   * （多数打印机 5mm 内安全）；低于 3mm 基本必被打印机裁掉，不放行。
+   */
+  marginMm?: number;
 }
 
 function validate(body: SceneRequest): string | null {
@@ -66,6 +71,10 @@ function validate(body: SceneRequest): string | null {
   if (body.subject !== undefined && body.subject !== '' && !SUBJECT_RULES[body.subject]) {
     return `subject 必须是 ${Object.keys(SUBJECT_RULES).join(' / ')} 之一（或省略）`;
   }
+  if (body.marginMm !== undefined) {
+    const m = Number(body.marginMm);
+    if (!Number.isFinite(m) || m < 3 || m > 25) return 'marginMm 必须是 3~25 的数字（毫米）';
+  }
   return null;
 }
 
@@ -79,6 +88,10 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
 
   const targetPages = body.targetPages ?? 1;
   const orientation = body.orientation ?? 'portrait';
+  const margins =
+    body.marginMm !== undefined
+      ? { top: body.marginMm, bottom: body.marginMm, left: body.marginMm, right: body.marginMm }
+      : DEFAULT_MARGINS;
   const startedAt = Date.now();
 
   try {
@@ -98,7 +111,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       targetPages,
       paperSize: 'A4' as const,
       orientation,
-      margins: DEFAULT_MARGINS,
+      margins,
     };
 
     // 自动模式用规则引擎的交集参数（多类刚性原子同时保护），模糊带内双跑实测裁决（B1）；
@@ -134,7 +147,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       {
         paperSize: 'A4',
         orientation,
-        margins: DEFAULT_MARGINS,
+        margins,
         fontSize: best.fontSize,
         density: renderDensity,
         debug: body.debug === true,
@@ -145,7 +158,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
     // 填充率按拼装几何估算（盒面积/内容区面积）；oversized 块可能把单页推过 100%，
     // 这本身是有用的信号，不截断。落页用拼装页码（0-based → 展示转 1-based）。
     const { grid } = outcome;
-    const { contentHMm } = resolveGrid({ paperSize: 'A4', orientation, margins: DEFAULT_MARGINS });
+    const { contentHMm } = resolveGrid({ paperSize: 'A4', orientation, margins });
     const measById = new Map(best.measurements.map((m) => [m.id, m]));
     const placeById = new Map(best.placements.map((p) => [p.id, p]));
     const boxHeightMm = (id: string): number | null => {
