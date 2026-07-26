@@ -1,0 +1,178 @@
+{
+  "poli-econ.md": {
+    "file": "poli-econ.md",
+    "scene": "text-cram",
+    "fontSize": 8.5,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      99,
+      99
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": true,
+    "ms": 4668
+  },
+  "test.md": {
+    "file": "test.md",
+    "scene": "formula",
+    "fontSize": 7.5,
+    "pages": 2,
+    "within": false,
+    "fills": [
+      81,
+      89
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 3882
+  },
+  "data-analysis.md": {
+    "file": "data-analysis.md",
+    "scene": "text-cram",
+    "fontSize": 13,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      98,
+      97
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1435
+  },
+  "cs-programming.md": {
+    "file": "cs-programming.md",
+    "scene": "code",
+    "fontSize": 15.5,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      95,
+      99
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1230
+  },
+  "os-large.md": {
+    "file": "os-large.md",
+    "scene": "text-cram",
+    "fontSize": 16.5,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      85,
+      99
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1409
+  },
+  "code-heavy.md": {
+    "file": "code-heavy.md",
+    "scene": "code",
+    "fontSize": 11,
+    "pages": 1,
+    "within": true,
+    "fills": [
+      89
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1300
+  },
+  "prob-band.md": {
+    "file": "prob-band.md",
+    "scene": "balanced",
+    "fontSize": 10.5,
+    "pages": 1,
+    "within": true,
+    "fills": [
+      90
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": true,
+    "ms": 2892
+  },
+  "network-tables.md": {
+    "file": "network-tables.md",
+    "scene": "balanced",
+    "fontSize": 12.5,
+    "pages": 1,
+    "within": true,
+    "fills": [
+      80
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 971
+  },
+  "word-paste.md": {
+    "file": "word-paste.md",
+    "scene": "text-cram",
+    "fontSize": 13.5,
+    "pages": 1,
+    "within": true,
+    "fills": [
+      82
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 960
+  },
+  "history-long.md": {
+    "file": "history-long.md",
+    "scene": "text-cram",
+    "fontSize": 13,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      98,
+      84
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1000
+  },
+  "java-oop.md": {
+    "file": "java-oop.md",
+    "scene": "code",
+    "fontSize": 9,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      96,
+      95
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1191
+  },
+  "db-systems.md": {
+    "file": "db-systems.md",
+    "scene": "code",
+    "fontSize": 12.5,
+    "pages": 2,
+    "within": true,
+    "fills": [
+      91,
+      99
+    ],
+    "oversized": 0,
+    "cramped": 0,
+    "b1": false,
+    "ms": 1143
+  }
+}

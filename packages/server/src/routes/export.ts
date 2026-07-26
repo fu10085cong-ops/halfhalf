@@ -6,7 +6,7 @@ export const exportRouter: Router = Router();
 
 /**
  * GET /api/download/:jobId/pdf
- * 下载最终优化后的 PDF。jobId 来自 /api/optimize 的 SSE result 事件，任务在内存中保留 30 分钟。
+ * 下载最终排版的 PDF。jobId 来自 /api/scene 响应，任务在内存中保留 30 分钟。
  */
 exportRouter.get('/download/:jobId/pdf', (req: Request, res: Response) => {
   const job = getJob(req.params.jobId);
@@ -25,11 +25,3 @@ exportRouter.get('/download/:jobId/pdf', (req: Request, res: Response) => {
   res.send(job.pdfBuffer);
 });
 
-/**
- * GET /api/download/:jobId/docx
- * 下载 DOCX。尚未实现，预留给后续 Pandoc 集成。
- */
-exportRouter.get('/download/:jobId/docx', (_req: Request, res: Response) => {
-  const response: ApiErrorResponse = { error: 'DOCX 导出功能尚未实现' };
-  res.status(501).json(response);
-});

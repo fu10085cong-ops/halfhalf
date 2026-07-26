@@ -13,7 +13,7 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "test": "tsx --test test/unit/*.test.ts",
-    "test:fixture": "tsx test/run-fixture.ts"
+    "bench": "tsx test/run-bench.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

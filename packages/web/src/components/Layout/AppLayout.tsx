@@ -36,7 +36,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           fontSize: 12,
           color: 'var(--color-text-secondary)',
         }}>
-          Markdown 自动分页排版系统
+          半开卷小抄生成器 —— 从材料到可打印 PDF
         </span>
       </header>
 

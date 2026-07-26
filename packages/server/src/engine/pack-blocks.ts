@@ -23,6 +23,12 @@ export interface PackInput {
   heightMm: number;
   /** 跨栏数（来自测量：不横向溢出的最小栏数） */
   span: number;
+  /**
+   * 备选窄档（洞驱动降档用，span 降序）：块在更窄档位下的高度。调用方负责只给
+   * "可读性达标"（scale ≥ minScale）且不超页高的档。列流模式下块卡住、页内换位
+   * 也救不回时，按序试这些窄档塞进当前页的剩余缺口——比开新页留一页死洞强。
+   */
+  altSpans?: { span: number; heightMm: number }[];
 }
 
 export interface Placement {
@@ -62,6 +68,8 @@ export interface PackResult {
   oversized: string[];
   /** 每栏天际线高度 mm：usage[page][column]，用于诊断留白率 */
   usage: number[][];
+  /** 被洞驱动降档改过档位的块（span = 实际落位档）；上层要用它同步测量数据 */
+  retiered: { id: string; span: number }[];
 }
 
 /** 一页的天际线 */
@@ -89,6 +97,7 @@ export function packBlocks(
 ): PackResult {
   const placements: Placement[] = [];
   const oversized: string[] = [];
+  const retiered: { id: string; span: number }[] = [];
   const pages: Sky[] = [];
 
   const newPage = (): Sky => {
@@ -144,7 +153,11 @@ export function packBlocks(
       const byArea = [...members].sort((a, b) => b.heightMm * b.span - a.heightMm * a.span);
       const pinFirst = (arr: typeof members) =>
         first ? [first, ...arr.filter((m) => m !== first)] : arr;
-      const orderings = [pinFirst(byHeight), pinFirst(byArea), byHeight, byArea];
+      // 阅读序优先：主流程的 leftmost-first-fit 爱把块竖着堆成左塔（title、二连放
+      // 一栏，宽块随即卡住），其实按原顺序改用 best-fit 重放往往就装得下——顺序一点
+      // 不牺牲。真实判例：cs 材料页 0，高度序把 131mm 的"三"排到 H1 标题前面（标题
+      // 沉到页中，观感像排坏了），而阅读序 best-fit 本可全装下且标题保持在页首。
+      const orderings = [members, pinFirst(byHeight), pinFirst(byArea), byHeight, byArea];
       for (const order of orderings) {
         const sky: Sky = new Array(geo.columnsPerPage).fill(0);
         const trial: { id: string; anchor: number; y: number }[] = [];
@@ -213,6 +226,20 @@ export function packBlocks(
         placed = tryPlace(m, cur);
       }
       if (!placed && repack) placed = repackPage(cur, m);
+      // 洞驱动降档（最后手段，开新页之前）：按原档装不下、换位也救不回时，试更窄的
+      // 备选档塞进本页剩余缺口。窄档更高但可读性已由调用方按 minScale 把过关——
+      // 比把块推到新页、本页留一列死洞强。span 降序 = 优先降得最少的档。
+      if (!placed) {
+        for (const alt of raw.altSpans ?? []) {
+          const altSpan = clampSpan(alt.span);
+          if (altSpan >= m.span) continue;
+          if (tryPlace({ id: m.id, heightMm: alt.heightMm, span: altSpan }, cur)) {
+            retiered.push({ id: m.id, span: altSpan });
+            placed = true;
+            break;
+          }
+        }
+      }
       if (!placed) {
         openPage();
         tryPlace(m, cur); // 非超高块在空页必然放得下
@@ -259,5 +286,5 @@ export function packBlocks(
   }
 
   const usage = pages.map((sky) => sky.map((v) => Math.round(v * 10) / 10));
-  return { placements, pages: pages.length, oversized, usage };
+  return { placements, pages: pages.length, oversized, usage, retiered };
 }

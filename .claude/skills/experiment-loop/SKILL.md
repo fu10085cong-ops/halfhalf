@@ -16,6 +16,7 @@ description: 当要改排版引擎(拼装/测量/搜索/规则)、调阈值参�
 ## 命令速查(均在 packages/server 下)
 
 ```bash
+pnpm bench                                 # 固定基准跑分 vs 基线(改引擎必跑;--update 入库)
 npx tsx test/dump-features.ts              # ① 全判例特征+判定速查(毫秒)
 pnpm test                                  # ② 回归套件,不开浏览器(秒级)
 npx tsx test/run-ab.ts <fixture> <页数>    # ③ 拼装变体 A/B:字号/页数/填充率

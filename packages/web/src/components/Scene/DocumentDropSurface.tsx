@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
+import { apiFetch } from '../../api';
 import './DocumentDropSurface.css';
 
 interface DocumentImportSummary {
@@ -133,7 +134,8 @@ export default function DocumentDropSurface({
 
         const form = new FormData();
         form.append('file', file);
-        const response = await fetch('/api/import/document', {
+        // apiFetch：部署环境的访问口令头（x-access-code）；FormData 不能手动设 Content-Type
+        const response = await apiFetch('/api/import/document', {
           method: 'POST',
           body: form,
         });

@@ -123,16 +123,6 @@ export async function applyTypography(
 }
 
 /**
- * 调整分栏数，不重新加载页面、不重跑 Mermaid。栏数只是一个 CSS 变量（column-count），
- * 所以 columns='auto' 时可以在同一个渲染上下文里反复切换栏数，不需要重开浏览器。
- */
-export async function applyColumns(ctx: RenderContext, columns: number): Promise<void> {
-  await ctx.page.evaluate((columns) => {
-    document.documentElement.style.setProperty('--columns', String(columns));
-  }, columns);
-}
-
-/**
  * 按当前字号/栏数的实际渲染宽度，判定哪些"不可重排的原子块"（独立公式、表格）塞不进当前栏，
  * 只给这些真正超栏的元素加 column-span:all 让它通栏，能塞进栏的保持在栏内。
  * 必须在每次 pdf() 之前跑（字号和栏数都会改变元素宽度和栏宽），确保页数统计和最终 PDF 一致。

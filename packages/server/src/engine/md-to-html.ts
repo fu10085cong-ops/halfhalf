@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import markdownItKatex from 'markdown-it-katex';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import { splitLongCodeComments } from './code-comments.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -94,13 +95,16 @@ export async function markdownToHtml(
   md.renderer.rules.fence = (tokens, idx) => {
     const token = tokens[idx];
     const lang = (token.info || '').trim().split(/\s+/)[0] || 'text';
-    const code = token.content;
 
     if (lang === 'mermaid') {
       const id = `hh-mermaid-${mermaidIndex++}`;
-      const encodedSource = Buffer.from(code, 'utf-8').toString('base64');
+      const encodedSource = Buffer.from(token.content, 'utf-8').toString('base64');
       return `<div class="${MERMAID_PENDING_CLASS}" id="${id}" data-source="${encodedSource}"></div>`;
     }
+
+    // 长注释行拆成多行注释（代码行不动）：注释是散文，不该享受代码的"禁折行"待遇
+    // 却把整块拖去宽档/整体缩小。只在渲染路径生效，用户源文本不变。
+    const code = splitLongCodeComments(token.content, lang);
 
     const safeLang = loadedLangs.has(lang as BundledLanguage) ? lang : 'text';
     try {

@@ -14,7 +14,8 @@ import { chunkMarkdown } from '../engine/chunk-markdown.js';
 import { SCENE_PRESETS, analyzeContent, type SceneId } from '../engine/scene-presets.js';
 import { deriveLayoutParams } from '../engine/rule-engine.js';
 import { SUBJECT_RULES, suggestSubject } from '../engine/subject-rules.js';
-import { renderGridPdf, searchGridFontSize } from '../engine/grid-layout.js';
+import { renderGridPdf, resolveGrid, searchGridFontSize } from '../engine/grid-layout.js';
+import { PX_PER_MM } from '../engine/measure-blocks.js';
 import { searchAdjudicated } from '../engine/adjudicate.js';
 import { precheckFormulas } from '../engine/precheck-formulas.js';
 import { derivePdfName } from '../engine/pdf-name.js';
@@ -42,6 +43,16 @@ interface SceneRequest {
    * 响应里的 subjectSuggestion 只是关键词识别建议，用户选了才算声明。
    */
   subject?: string;
+  /**
+   * 四边统一页边距 mm（3~25），省略 = 默认 10。降到 6mm 白捡约 7.6% 版面
+   * （多数打印机 5mm 内安全）；低于 3mm 基本必被打印机裁掉，不放行。
+   */
+  marginMm?: number;
+  /**
+   * 满版伸展（默认开）：搜索定稿后逐块微放大字号（≤+2pt），把柱底/块间的
+   * 空隙换成更大的字。false = 关（全文严格等字号的老行为）。
+   */
+  stretchFill?: boolean;
 }
 
 function validate(body: SceneRequest): string | null {
@@ -65,6 +76,10 @@ function validate(body: SceneRequest): string | null {
   if (body.subject !== undefined && body.subject !== '' && !SUBJECT_RULES[body.subject]) {
     return `subject 必须是 ${Object.keys(SUBJECT_RULES).join(' / ')} 之一（或省略）`;
   }
+  if (body.marginMm !== undefined) {
+    const m = Number(body.marginMm);
+    if (!Number.isFinite(m) || m < 3 || m > 25) return 'marginMm 必须是 3~25 的数字（毫米）';
+  }
   return null;
 }
 
@@ -78,6 +93,11 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
 
   const targetPages = body.targetPages ?? 1;
   const orientation = body.orientation ?? 'portrait';
+  const margins =
+    body.marginMm !== undefined
+      ? { top: body.marginMm, bottom: body.marginMm, left: body.marginMm, right: body.marginMm }
+      : DEFAULT_MARGINS;
+  const startedAt = Date.now();
 
   try {
     const blocks = chunkMarkdown(body.markdown);
@@ -96,7 +116,8 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       targetPages,
       paperSize: 'A4' as const,
       orientation,
-      margins: DEFAULT_MARGINS,
+      margins,
+      stretchFill: body.stretchFill !== false,
     };
 
     // 自动模式用规则引擎的交集参数（多类刚性原子同时保护），模糊带内双跑实测裁决（B1）；
@@ -132,12 +153,69 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       {
         paperSize: 'A4',
         orientation,
-        margins: DEFAULT_MARGINS,
+        margins,
         fontSize: best.fontSize,
         density: renderDensity,
         debug: body.debug === true,
+        stretched: best.stretched,
       }
     );
+
+    // —— 网页测试台诊断：每块的档位/落页/缩放 + 每页填充率 ——
+    // 填充率按拼装几何估算（盒面积/内容区面积）；oversized 块可能把单页推过 100%，
+    // 这本身是有用的信号，不截断。落页用拼装页码（0-based → 展示转 1-based）。
+    const { grid } = outcome;
+    const { contentHMm } = resolveGrid({ paperSize: 'A4', orientation, margins });
+    const measById = new Map(best.measurements.map((m) => [m.id, m]));
+    const placeById = new Map(best.placements.map((p) => [p.id, p]));
+    const stretchedMap = best.stretched ?? {};
+    const boxHeightMm = (id: string): number | null => {
+      // 满版伸展过的块按放大后的实际高度算，填充率才如实
+      const heightPx = stretchedMap[id]?.heightPx ?? measById.get(id)?.heightPx;
+      return heightPx !== undefined ? heightPx / PX_PER_MM + grid.gutterMm : null;
+    };
+    const pageAreas = new Map<number, number>();
+    for (const p of best.placements) {
+      const h = boxHeightMm(p.id);
+      if (h === null) continue;
+      pageAreas.set(p.page, (pageAreas.get(p.page) ?? 0) + p.span * grid.unitMm * h);
+    }
+    const pageAreaMm2 = grid.unitsX * grid.unitMm * contentHMm;
+    const fillPages = Math.max(best.pages, 1);
+    const diagnostics = {
+      grid: {
+        unitsX: grid.unitsX,
+        unitMm: Math.round(grid.unitMm * 100) / 100,
+        gutterMm: Math.round(grid.gutterMm * 100) / 100,
+        widthTiers: grid.widthTiers,
+      },
+      blocks: outcome.blocks.map((b) => {
+        const m = measById.get(b.id);
+        const p = placeById.get(b.id);
+        const h = boxHeightMm(b.id);
+        return {
+          id: b.id,
+          title: b.title || (b.kind === 'image' ? '（图片）' : '（前言）'),
+          kind: b.kind,
+          span: m?.span ?? 0,
+          page: p ? p.page + 1 : null,
+          heightMm: h === null ? null : Math.round(h * 10) / 10,
+          scale: m ? Math.round(m.scale * 100) / 100 : 1,
+          formulaScale: m ? Math.round(m.formulaScale * 100) / 100 : 1,
+          belowMinScale: m?.belowMinScale ?? false,
+          oversized: best.oversized.includes(b.id),
+          // 满版伸展后的块级字号（null = 未放大，仍是全局字号）
+          stretchedPt: stretchedMap[b.id]?.fontSize ?? null,
+        };
+      }),
+      pageFill: Array.from({ length: fillPages }, (_, i) =>
+        Math.round(((pageAreas.get(i) ?? 0) / pageAreaMm2) * 100)
+      ),
+      overallFill: Math.round(
+        ([...pageAreas.values()].reduce((a, b) => a + b, 0) / (pageAreaMm2 * fillPages)) * 100
+      ),
+      elapsedMs: Date.now() - startedAt,
+    };
 
     const jobId = randomUUID();
     // 调试版单独命名，免得和正式版下载到同一个文件名互相覆盖
@@ -174,6 +252,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         cramped: best.cramped,
         formulaIssues,
       },
+      diagnostics,
       jobId,
     });
   } catch (err) {

@@ -54,3 +54,14 @@ test('纪律：每条学科规则 evidence 非空且不是套话', () => {
     assert.ok(rule.aliases.length > 0, `${rule.id} 缺关键词`);
   }
 });
+
+test('站③回归锁：≤2 字短别名单次出现不算证据（"能带"⊄"不能带来满意"），双次/长别名照常', () => {
+  // 真实误报:管理学材料因"不能带来满意"被建议半导体
+  assert.equal(suggestSubject('管理学要点:保健因素只能消除不满,不能带来满意。'), null);
+  // 同一短别名出现两次 = 真术语
+  const twice = suggestSubject('能带理论是基础;能带结构决定导电性。');
+  assert.equal(twice?.id, 'semiconductor');
+  // 长别名一次即可
+  const long = suggestSubject('本章讲阈值电压的推导。');
+  assert.equal(long?.id, 'semiconductor');
+});

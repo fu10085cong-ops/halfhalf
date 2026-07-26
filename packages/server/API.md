@@ -4,15 +4,15 @@
 本文档只是把它翻译成带示例的说明——如果两者不一致，以代码为准。
 
 - Base URL：本地开发默认 `http://localhost:3000`
-- 除 `/api/import/document` 使用 `multipart/form-data`、`/api/optimize` 使用 SSE、PDF 下载返回二进制外，其余请求/响应 body 都是 `application/json`
-- 当前没有鉴权机制，所有接口公开可访问
+- 所有请求/响应 body 都是 `application/json`，除了 `/api/import/document`（`multipart/form-data`）、SSE 接口（`/api/ai/structurize`、`/api/ai/compress`）和 PDF 下载（二进制流）
+- 鉴权：设置了环境变量 `HALFHALF_ACCESS_CODE` 时，所有 `/api/*` 请求须带 `x-access-code` 头（`/api/health` 放行）；未设置则公开可访问
 - 时间字段（`timestamp`）统一是 `Date.now()` 的毫秒时间戳
 
 ---
 
 ## 通用错误响应形状
 
-所有接口的错误——不管是普通 HTTP 4xx/5xx 的 JSON body，还是 `/api/optimize` 里 SSE 的 `error` 事件——
+所有接口的错误——不管是普通 HTTP 4xx/5xx 的 JSON body，还是 SSE 接口的 `error` 事件——
 都用同一个形状，前端只需要认一种结构：
 
 ```ts
@@ -92,6 +92,18 @@ interface SceneRequest {
 }
 ```
 
+请求 body 另支持：
+- `marginMm?: number`——四边统一页边距毫米（3~25，省略 = 默认 10；6mm 比默认多约
+  7.6% 版面，4mm 以下注意打印机物理边界）；
+- `stretchFill?: boolean`——满版收尾（默认 true），包含两步：**末页拉宽重排**（多页结果
+  且末页填充 <60% 时，末页文字块统一升到通栏、按阅读序堆叠、余量均摊成块间呼吸位）+
+  **满版伸展**（逐块微放大字号：非末页 ≤+2pt，末页 ≤+4pt——末页下方多为页底空白，
+  字号差异顾虑小、可回收空隙大）；被放大的块在 `diagnostics.blocks[].stretchedPt` 里可见。
+  false = 关掉两步，全文严格等字号、版面按搜索原样输出。
+
+搜索达标判据：页数进目标 **且内容完整**——存在超高截断块的试探不会被选为最优
+（例外：最小字号下就超高的块，字号救不了，退回尽力交付 + `warnings.oversized`）。
+
 ### 响应 `200`
 
 ```ts
@@ -123,216 +135,44 @@ interface SceneRequest {
     cramped: string[];        // 跨满最大档仍需缩到可读下限以下的块 id
     formulaIssues: { blockId: string; blockTitle: string; message: string }[];  // KaTeX 预检错误
   };
+  diagnostics: {              // 网页测试台诊断（前端「块诊断」折叠面板的数据源）
+    grid: { unitsX: number; unitMm: number; gutterMm: number; widthTiers: number[] };
+    blocks: {                 // 每块一行，按阅读顺序
+      id: string; title: string; kind: 'text' | 'image';
+      span: number;           // 选定宽度档位（格数）
+      page: number | null;    // 落页（1-based；null = 未落位）
+      heightMm: number | null;    // 盒高（含 gutter）
+      scale: number;          // 块内原子最小缩放（含表格）；1 = 未缩
+      formulaScale: number;   // 独立公式单独的最小缩放（B1 口径）
+      belowMinScale: boolean; oversized: boolean;
+    }[];
+    pageFill: number[];       // 每页填充率 %（拼装几何估算；有超高块可能 >100）
+    overallFill: number;
+    elapsedMs: number;        // 本次请求全程耗时（分块→搜索→渲染）
+  };
   jobId: string;              // 拿去 GET /api/download/:jobId/pdf
 }
 ```
 
 ---
 
-## `POST /api/optimize`（SSE 流式）
+## `GET /api/fixtures` / `GET /api/fixtures/:name`（仅开发环境）
 
-核心接口：提交 Markdown 和排版参数，服务端二分搜索最佳字号，用 SSE 流式返回搜索过程和最终结果。
-
-### 请求 body
-
-```ts
-interface OptimizeRequest {
-  markdown: string;           // 必填，非空
-  targetPages: number;        // 必填，>= 1
-  paperSize?: 'A4' | 'A5' | 'Letter';  // 默认 'A4'
-  margins?: { top: number; bottom: number; left: number; right: number };  // 单位 mm，按字段合并默认值，不用传全部四个
-  density?: 'compact' | 'normal' | 'loose';  // 默认 'normal'
-  precision?: number;         // 字号搜索精度，单位 pt，默认 0.5，必须 > 0
-  cleanup?: boolean;          // 是否在排版前跑确定性格式清理，默认 false（不改动原文）
-  orientation?: 'portrait' | 'landscape' | 'auto';  // 纸张方向，默认 'portrait'
-  columns?: number | 'auto';  // 分栏数，默认 1（单栏）
-}
-```
-
-**校验规则**（不满足会直接返回 `400` + `ApiErrorResponse`，不会进入排版流程）：
-
-| 字段 | 规则 |
-|------|------|
-| `markdown` | 必须是非空字符串 |
-| `targetPages` | 必须是 >= 1 的数字 |
-| `paperSize` | 传了就必须是 `A4`/`A5`/`Letter` 之一 |
-| `density` | 传了就必须是 `compact`/`normal`/`loose` 之一 |
-| `precision` | 传了就必须是 > 0 的数字 |
-| `margins` | 传了的话，`top`/`bottom`/`left`/`right` 都必须是 >= 0 的数字 |
-| `orientation` | 传了就必须是 `portrait`/`landscape`/`auto` 之一 |
-| `columns` | 传了就必须是 `'auto'` 或 1~12 的整数 |
-
-`orientation` 说明：
-- `portrait`（默认）：竖版，跟历史行为一致，只跑一轮搜索
-- `landscape`：横版，纸张宽高对调（页边距不跟着转，仍然按 top/bottom/left/right 挂在物理边上），只跑一轮搜索
-- `auto`：并行跑竖版和横版两轮完整搜索，取 `optimalFontSize` 更大的结果返回。总耗时接近单轮（两轮并行），但会同时占用两个 Chromium 实例的内存/CPU——多人并发场景下慎用，等浏览器实例池做完之前不建议做成默认值
-
-`columns` 说明：
-- 具体数字（默认 `1`）：固定栏数。多栏时正文/代码/公式/图片会在栏内自然流动、跟文字穿插；宽表格会通栏（占满整行宽度）避免被挤进窄栏。
-- `'auto'`：引擎在 1~4 栏之间逐个尝试，取能撑出最大字号的栏数。切换栏数只改一个 CSS 变量、复用同一个浏览器上下文，**不会**成倍增加浏览器实例；但渲染次数会随候选栏数增加，耗时相应变长。
-- `orientation` 和 `columns` 可以同时为 `'auto'`——此时会在「方向 × 栏数」的组合里全局择优（字号最大者优先，其次页数少、栏数少、竖版）。
-
-请求示例：
-
-```json
-{
-  "markdown": "# Hello\n\nWorld $E=mc^2$",
-  "targetPages": 2,
-  "paperSize": "A4",
-  "density": "compact",
-  "margins": { "top": 8, "bottom": 8, "left": 8, "right": 8 },
-  "precision": 0.5,
-  "cleanup": true,
-  "orientation": "auto",
-  "columns": "auto"
-}
-```
-
-### 响应：SSE 事件流
-
-响应头是 `Content-Type: text/event-stream`，收到请求后立刻建立连接，随二分搜索的每一轮迭代推送事件，
-最后以 `result` 或 `error` 事件之一结束并关闭连接。
-
-#### `event: progress`（每轮迭代一次，0 到多次）
+把 `packages/server/test/fixtures/*.md` 暴露给前端「测试材料」下拉，一键载入文本框，
+免去手动翻文件夹复制粘贴。`NODE_ENV=production` 时两个接口一律 404（fixtures 里是
+个人真实复习材料，且 API 尚无访问门槛）。
 
 ```ts
-interface IterationRecord {
-  fontSize: number;      // 本轮尝试的字号（pt）
-  pages: number;         // 本轮渲染出的实际页数
-  withinLimit: boolean;  // 本轮页数是否 <= targetPages
-  timestamp: number;
-  orientation: 'portrait' | 'landscape';  // 本轮测试的纸张方向；只有 orientation='auto' 时才会同时出现两种
-  columns: number;                          // 本轮测试的分栏数；columns='auto' 时不同轮次会出现不同栏数
-}
+// GET /api/fixtures            → { fixtures: { name: string; sizeKb: number }[] }
+// GET /api/fixtures/:name      → { name: string; markdown: string }
+// :name 只接受 [\w.-]+\.md，路径穿越一律 400
 ```
-
-```
-event: progress
-data: {"fontSize":12,"pages":7,"withinLimit":false,"timestamp":1234567890,"orientation":"portrait","columns":2}
-```
-
-`orientation='auto'` 时，两个方向的搜索并行进行，`progress` 事件会交替出现 `portrait`/`landscape`，
-前端如果要分开展示两条进度，用 `orientation` 字段分组即可。
-
-#### `event: result`（成功时，最后一个事件）
-
-```ts
-interface OptimizeResult {
-  optimalFontSize: number;
-  actualPages: number;
-  iterations: number;
-  history: IterationRecord[];      // 完整的迭代记录，和收到的 progress 事件是同一份数据
-  withinTargetPages: boolean;      // false 表示内容过多，最小字号仍超页，返回的是最佳努力结果
-  jobId: string;                   // 用于 /api/download/:jobId/pdf 下载对应的 PDF
-  orientation: 'portrait' | 'landscape';  // 最终采用的方向；orientation='auto' 时是搜索结果字号更大的那个
-  columns: number;                          // 最终采用的分栏数；columns='auto' 时是搜索结果字号更大的那个栏数
-}
-```
-
-```
-event: result
-data: {"optimalFontSize":10.5,"actualPages":2,"iterations":6,"history":[...],"withinTargetPages":true,"jobId":"b3f1c2...","orientation":"portrait"}
-```
-
-#### `event: error`（失败时，最后一个事件）
-
-```
-event: error
-data: {"error":"具体错误信息"}
-```
-
-### 前端解析 SSE 的参考实现
-
-```ts
-const response = await fetch('/api/optimize', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(requestBody),
-});
-
-const reader = response.body!.getReader();
-const decoder = new TextDecoder();
-let buffer = '';
-
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-
-  buffer += decoder.decode(value, { stream: true });
-  const lines = buffer.split('\n');
-  buffer = lines.pop() || '';
-
-  let eventType = '';
-  for (const line of lines) {
-    if (line.startsWith('event: ')) {
-      eventType = line.slice(7).trim();
-    } else if (line.startsWith('data: ')) {
-      const data = JSON.parse(line.slice(6));
-      // eventType 是 'progress' | 'result' | 'error'
-    }
-  }
-}
-```
-
----
-
-## `POST /api/render`
-
-单次渲染 PDF 预览，**不参与二分搜索**——用户指定一个确定的字号（而不是目标页数），直接渲染一次。
-典型用途：用户切换纸张方向（横版/竖版）或调整字号之后，想先看一眼效果，再决定要不要跑完整的
-`/api/optimize`。
-
-### 请求 body
-
-```ts
-interface RenderPreviewRequest {
-  markdown: string;                      // 必填，非空
-  fontSize: number;                      // 必填，必须落在 6~24（SEARCH_CONFIG 的范围）之间
-  paperSize?: 'A4' | 'A5' | 'Letter';    // 默认 'A4'
-  margins?: { top: number; bottom: number; left: number; right: number };
-  density?: 'compact' | 'normal' | 'loose';  // 默认 'normal'
-  orientation?: 'portrait' | 'landscape';    // 默认 'portrait'；**不支持 'auto'**（单次预览没有"取更优方向"这个概念，orientation 必须由用户自己选定）
-  columns?: number;                      // 默认 1；**不支持 'auto'**（同 orientation，预览必须给定具体栏数）
-  cleanup?: boolean;                     // 默认 false
-}
-```
-
-**校验规则**：跟 `/api/optimize` 基本一致，区别是没有 `targetPages`/`precision`，多了必填的
-`fontSize`（必须是 6~24 之间的数字）；`orientation` 和 `columns` 传 `'auto'` 都会被拒绝，返回 `400`。
-
-### 响应
-
-**成功**：`200`，直接返回 PDF 二进制流：
-
-- `Content-Type: application/pdf`
-- `Content-Disposition: inline`（不是 `attachment`，适合前端用 `<iframe>`/`<embed>` 直接内嵌预览，而不是触发下载）
-- `X-Page-Count`：本次渲染的实际页数，放在响应头里，不需要解析 PDF 内容就能拿到
-
-**失败**：`400`（参数校验不通过）或 `500`（渲染过程出错）+ `ApiErrorResponse`。
-
-### 前端典型用法
-
-```ts
-const response = await fetch('/api/render', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ markdown, fontSize: 12, orientation: 'landscape' }),
-});
-
-const pageCount = response.headers.get('X-Page-Count');
-const blob = await response.blob();
-const url = URL.createObjectURL(blob);
-// <iframe src={url} /> 或 <embed src={url} type="application/pdf" />
-```
-
-这个接口不会创建 `jobId`、不会写入 job-store——纯粹是"渲染一次给你看"，预览满意之后要走
-`/api/optimize` 正式生成可下载的最终结果。
 
 ---
 
 ## `GET /api/download/:jobId/pdf`
 
-下载 `/api/optimize` 产出的最终 PDF。`jobId` 来自 SSE `result` 事件里的 `jobId` 字段。
+下载最终排版的 PDF。`jobId` 来自 `/api/scene` 响应的 `jobId` 字段。
 
 - 成功：`200`，`Content-Type: application/pdf`，`Content-Disposition: attachment`
 - 失败（任务不存在或已过期）：`404` + `ApiErrorResponse`
@@ -341,9 +181,31 @@ const url = URL.createObjectURL(blob);
 
 ---
 
-## `GET /api/download/:jobId/docx`
 
-**尚未实现**，恒定返回 `501` + `ApiErrorResponse`，预留给后续 Pandoc 集成。
+## `POST /api/ai/structurize`（SSE 流式）
+
+⓪ 结构化入口（DESIGN.md）：任意粘贴内容（Word 文本/课件/聊天记录）→ 标准 .md。
+只重组不新增知识；产物过结构体检（切块健康度 + 巨块 + KaTeX 公式预检），
+不合格自动带体检结论追问 AI 一轮（最多一轮）。
+
+```ts
+// 请求
+{
+  content: string;             // 任意文本;超过 HALFHALF_AI_MAX_INPUT(默认 6 万字)返回 413
+  provider?: AiProviderConfig; // BYOK(走域名白名单);省略时用服务器统一 key
+}
+// key 解析顺序:BYOK > 服务器 env(HALFHALF_AI_ENDPOINT / HALFHALF_AI_MODEL / HALFHALF_AI_KEY)> 501
+// 限流:每 IP 每小时 HALFHALF_AI_RATE_LIMIT 次(默认 10),超出 429
+```
+
+SSE 事件流：
+
+```
+event: delta    data: { text: string, attempt: 1 | 2 }   // 增量 md 文本;attempt 变化时前端应清空缓冲
+event: retry    data: { problems: string[] }             // 首轮体检不过,即将追问修正
+event: result   data: { markdown, check: { ok, problems, blockCount }, attempts }  // 最终结果(ok=false 也返回)
+event: error    data: { error: string }
+```
 
 ---
 

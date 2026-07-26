@@ -1,67 +1,24 @@
 /**
  * 场景排版面板（网格引擎）：无装饰、全功能。
- * - Markdown 纯 textarea；图片显示短附件引用，data URI 留在页面内存、生成时再还原
+ * - Markdown 纯 textarea；截图直接 Ctrl/Cmd+V 粘贴或点按钮上传，自动转 data URI 插入光标处
  * - 场景默认"自动推荐"，结果里显示推荐理由，用户可改选后重排
  * - 结果：内容统计 / 推荐场景 / 字号页数 / 各类警告 / PDF 内嵌预览 + 下载
  */
 import { useEffect, useRef, useState } from 'react';
-import type { SceneId, SceneResult, BlockSuggestion, AiCompressResponse, AiCompressSummary } from '../../types';
+import ChatIntake from './ChatIntake';
 import DocumentDropSurface from './DocumentDropSurface';
-import {
-  compactInlineImages,
-  expandImageAttachments,
-  fileToImageAttachment,
-} from './imageAttachments';
+import { apiFetch } from '../../api';
+import type {
+  SceneId,
+  SceneResult,
+  BlockSuggestion,
+  AiCompressResponse,
+  AiCompressSummary,
+  FixtureInfo,
+} from '../../types';
 
 /** BYOK 配置存本地浏览器（localStorage），不上传服务器；key 也只在本机 */
-const AI_KEYS = {
-  provider: 'hh.ai.provider',
-  model: 'hh.ai.model',
-  keyPrefix: 'hh.ai.key',
-} as const;
-
-const AI_PROVIDERS = {
-  deepseek: {
-    label: 'DeepSeek',
-    endpoint: 'https://api.deepseek.com/chat/completions',
-    models: [
-      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（推荐）' },
-      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-    ],
-  },
-  qwen: {
-    label: '阿里云百炼（通义千问）',
-    endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    models: [
-      { value: 'qwen3.7-plus', label: 'Qwen 3.7 Plus（推荐）' },
-      { value: 'qwen3.7-max', label: 'Qwen 3.7 Max' },
-      { value: 'qwen3.6-flash', label: 'Qwen 3.6 Flash' },
-    ],
-  },
-  zhipu: {
-    label: '智谱 AI（GLM）',
-    endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    models: [
-      { value: 'glm-5.2', label: 'GLM-5.2（推荐）' },
-      { value: 'glm-5', label: 'GLM-5' },
-    ],
-  },
-  minimax: {
-    label: 'MiniMax',
-    endpoint: 'https://api.minimaxi.com/v1/chat/completions',
-    models: [
-      { value: 'MiniMax-M2.7', label: 'MiniMax M2.7（推荐）' },
-      { value: 'MiniMax-M2.7-highspeed', label: 'MiniMax M2.7 极速版' },
-      { value: 'MiniMax-M2.5', label: 'MiniMax M2.5' },
-    ],
-  },
-} as const;
-
-type AiProviderId = keyof typeof AI_PROVIDERS;
-
-function isAiProviderId(value: string): value is AiProviderId {
-  return value in AI_PROVIDERS;
-}
+const AI_KEYS = { endpoint: 'hh.ai.endpoint', model: 'hh.ai.model', key: 'hh.ai.key' } as const;
 const lsGet = (k: string, fallback: string) => {
   try {
     return localStorage.getItem(k) ?? fallback;
@@ -99,6 +56,26 @@ const diffCol: React.CSSProperties = {
   overflow: 'auto',
 };
 
+/** 诊断表/历史表的单元格样式 */
+const cellTh: React.CSSProperties = {
+  border: '1px solid #e2e8f0',
+  padding: '2px 6px',
+  background: '#f8fafc',
+  textAlign: 'left',
+  whiteSpace: 'nowrap',
+};
+const cellTd: React.CSSProperties = { border: '1px solid #e2e8f0', padding: '2px 6px' };
+
+/** 会话内的一次生成记录——改一个参数再生成即可对照（网页版单变量 A/B） */
+interface RunRecord {
+  config: string;
+  fontSize: number;
+  pages: number;
+  ok: boolean;
+  fill: number | null;
+  secs: string | null;
+}
+
 const SCENE_OPTIONS: { value: SceneId | 'auto'; label: string }[] = [
   { value: 'auto', label: '自动推荐' },
   { value: 'text-cram', label: '极限文本（背诵型大文本，samples 风格）' },
@@ -133,15 +110,34 @@ $$
 
 ## 三、图片
 
-截图可直接拖进左侧区域，或在文本框里 Ctrl/Cmd+V 粘贴。
+截图后直接在文本框里 Ctrl/Cmd+V 粘贴，或点「插入图片」按钮。
 `;
 
+function insertAtCursor(el: HTMLTextAreaElement, text: string): string {
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  return el.value.slice(0, start) + text + el.value.slice(end);
+}
+
+function fileToMarkdownImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(`\n![截图](${reader.result as string})\n`);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function ScenePanel() {
-  const [imageSources, setImageSources] = useState<Record<string, string>>({});
-  const imageSourcesRef = useRef<Record<string, string>>({});
   const [markdown, setMarkdown] = useState(DEFAULT_MD);
-  const [targetPages, setTargetPages] = useState(1);
+  // 默认 2 页 = 一张 A4 双面（半开卷常态）。默认 1 时材料稍多就必然"未达标"警告，
+  // 应急用户会陷进"生成→看警告→改页数→重来"的循环
+  const [targetPages, setTargetPages] = useState(2);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  // 四边统一页边距 mm。6mm 比默认 10mm 白捡约 7.6% 版面;4mm 贴近多数打印机的物理极限
+  const [marginMm, setMarginMm] = useState(10);
+  // 满版伸展:定稿后逐块微放大字号(≤+2pt)填掉正下方空隙,默认开
+  const [stretchFill, setStretchFill] = useState(true);
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [debug, setDebug] = useState(false);
@@ -152,23 +148,44 @@ export default function ScenePanel() {
   const [result, setResult] = useState<SceneResult | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // —— 测试台：fixtures 速载 + 会话内历史对比 ——
+  const [fixtures, setFixtures] = useState<FixtureInfo[]>([]);
+  const [fixtureSel, setFixtureSel] = useState('');
+  const [runs, setRuns] = useState<RunRecord[]>([]);
+
+  useEffect(() => {
+    // 生产环境该接口 404，静默隐藏整个速载区
+    apiFetch('/api/fixtures')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.fixtures) setFixtures(d.fixtures as FixtureInfo[]);
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadFixture = async () => {
+    if (!fixtureSel) return;
+    try {
+      const r = await apiFetch(`/api/fixtures/${encodeURIComponent(fixtureSel)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setMarkdown(d.markdown as string);
+      setResult(null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   // —— AI 语义精简（BYOK）——
   const [showAi, setShowAi] = useState(false);
-  const [aiProviderId, setAiProviderId] = useState<AiProviderId>(() => {
-    const stored = lsGet(AI_KEYS.provider, 'deepseek');
-    return isAiProviderId(stored) ? stored : 'deepseek';
-  });
-  const aiProvider = AI_PROVIDERS[aiProviderId];
-  const [aiModel, setAiModel] = useState(() => {
-    const stored = lsGet(AI_KEYS.model, '');
-    return aiProvider.models.some((model) => model.value === stored)
-      ? stored
-      : aiProvider.models[0].value;
-  });
-  const [aiKey, setAiKey] = useState(() =>
-    lsGet(`${AI_KEYS.keyPrefix}.${aiProviderId}`, lsGet(AI_KEYS.keyPrefix, ''))
+  const [aiEndpoint, setAiEndpoint] = useState(() =>
+    lsGet(AI_KEYS.endpoint, 'https://api.openai.com/v1/chat/completions')
   );
+  const [aiModel, setAiModel] = useState(() => lsGet(AI_KEYS.model, 'gpt-4o-mini'));
+  const [aiKey, setAiKey] = useState(() => lsGet(AI_KEYS.key, ''));
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BlockSuggestion[]>([]);
@@ -178,59 +195,10 @@ export default function ScenePanel() {
   const [compressSource, setCompressSource] = useState('');
 
   const insertImageFile = async (file: File) => {
-    const { attachment } = await fileToImageAttachment(file);
-    imageSourcesRef.current[attachment.id] = attachment.dataUri;
-    setImageSources((current) => ({ ...current, [attachment.id]: attachment.dataUri }));
+    const snippet = await fileToMarkdownImage(file);
+    const el = textareaRef.current;
+    setMarkdown(el ? insertAtCursor(el, snippet) : markdown + snippet);
   };
-
-  const insertImportedMarkdown = (incoming: string) => {
-    const compacted = compactInlineImages(incoming);
-    if (compacted.attachments.length > 0) {
-      for (const attachment of compacted.attachments) {
-        imageSourcesRef.current[attachment.id] = attachment.dataUri;
-      }
-      setImageSources((current) => {
-        const next = { ...current };
-        for (const attachment of compacted.attachments) {
-          next[attachment.id] = attachment.dataUri;
-        }
-        return next;
-      });
-    }
-    setMarkdown((current) =>
-      current === DEFAULT_MD || !current.trim()
-        ? compacted.markdown
-        : `${current.trim()}\n\n---\n\n${compacted.markdown}`
-    );
-    setResult(null);
-    setError(null);
-    setSuggestions([]);
-    setAccepted({});
-    setAiSummary(null);
-    setCompressSource('');
-
-    if (pdfUrl) {
-      URL.revokeObjectURL(pdfUrl);
-      setPdfUrl(null);
-    }
-  };
-
-  // 兼容旧会话或用户手工粘贴的 data URI：自动缩成短引用，不让几万字符淹没编辑框。
-  useEffect(() => {
-    const compacted = compactInlineImages(markdown);
-    if (compacted.attachments.length === 0) return;
-    for (const attachment of compacted.attachments) {
-      imageSourcesRef.current[attachment.id] = attachment.dataUri;
-    }
-    setImageSources((current) => {
-      const next = { ...current };
-      for (const attachment of compacted.attachments) {
-        next[attachment.id] = attachment.dataUri;
-      }
-      return next;
-    });
-    setMarkdown(compacted.markdown);
-  }, [markdown]);
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'));
@@ -240,37 +208,76 @@ export default function ScenePanel() {
     if (file) await insertImageFile(file);
   };
 
-  const run = async () => {
+  /** 文档导入（拖拽/选择 Word·PDF → /api/import/document 转出的 Markdown）：
+   *  追加到现有内容之后（--- 分隔）；文本框还是默认样例或空白则直接替换。 */
+  const insertImportedMarkdown = (incoming: string) => {
+    setMarkdown((current) =>
+      current === DEFAULT_MD || !current.trim()
+        ? incoming
+        : `${current.trim()}\n\n---\n\n${incoming}`
+    );
+    setResult(null);
+    setError(null);
+    setSuggestions([]);
+    setAccepted({});
+    setAiSummary(null);
+    setCompressSource('');
+    if (pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(null);
+    }
+  };
+
+  /** mdOverride：ChatIntake「采用并排版」时刚 setMarkdown 的值还没进本闭包，直接传参绕过 */
+  const run = async (mdOverride?: string) => {
+    const md = mdOverride ?? markdown;
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const currentImages = { ...imageSourcesRef.current, ...imageSources };
-      const hiddenImages = Object.entries(currentImages)
-        .filter(([id]) => !markdown.includes(`halfhalf-image://${id}`))
-        .map(([, dataUri]) => `![](${dataUri})`)
-        .join('\n\n');
-      const renderMarkdown = [expandImageAttachments(markdown, currentImages), hiddenImages]
-        .filter(Boolean)
-        .join('\n\n');
-      const resp = await fetch('/api/scene', {
+      const resp = await apiFetch('/api/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          markdown: renderMarkdown,
+          markdown: md,
           targetPages,
           scene,
           orientation,
           debug,
           allowReorder,
           subject: subject || undefined,
+          marginMm,
+          stretchFill,
         }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-      setResult(data as SceneResult);
+      const r = data as SceneResult;
+      setResult(r);
+      // 记入会话历史（带当时的参数指纹），供改参数后对照
+      setRuns((prev) => [
+        ...prev,
+        {
+          config: [
+            scene === 'auto' ? '自动' : scene,
+            subject || null,
+            `目标${targetPages}页`,
+            orientation === 'landscape' ? '横' : '竖',
+            allowReorder ? '乱序' : null,
+            marginMm !== 10 ? `边距${marginMm}mm` : null,
+            !stretchFill ? '不伸展' : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          fontSize: r.fontSize,
+          pages: r.pages,
+          ok: r.withinTargetPages,
+          fill: r.diagnostics?.overallFill ?? null,
+          secs: r.diagnostics ? (r.diagnostics.elapsedMs / 1000).toFixed(1) : null,
+        },
+      ]);
 
-      const pdfResp = await fetch(`/api/download/${(data as SceneResult).jobId}/pdf`);
+      const pdfResp = await apiFetch(`/api/download/${(data as SceneResult).jobId}/pdf`);
       if (!pdfResp.ok) throw new Error('PDF 下载失败');
       const blob = await pdfResp.blob();
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -295,13 +302,13 @@ export default function ScenePanel() {
     const snapshot = markdown;
     setCompressSource(snapshot);
     try {
-      const resp = await fetch('/api/ai/compress', {
+      const resp = await apiFetch('/api/ai/compress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           markdown: snapshot,
           provider: {
-            endpoint: aiProvider.endpoint,
+            endpoint: aiEndpoint,
             model: aiModel,
             headers: { Authorization: `Bearer ${aiKey}` },
           },
@@ -362,14 +369,23 @@ export default function ScenePanel() {
     : [];
 
   return (
+    <DocumentDropSurface onMarkdownImport={insertImportedMarkdown} onImageImport={insertImageFile}>
+      {(uploadPanel) => (
     <div style={{ display: 'flex', gap: 12, height: '100%', padding: 12, boxSizing: 'border-box' }}>
       {/* 左：输入 */}
-      <DocumentDropSurface
-        onMarkdownImport={insertImportedMarkdown}
-        onImageImport={insertImageFile}
-      >
-        {(uploadPanel) => (
-          <>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+        {/* ⓪ 材料转换：应急路径第一棒。BYOK key 填了就带上（花用户自己的钱），否则走服务器统一 key */}
+        <ChatIntake
+          provider={
+            aiKey.trim()
+              ? { endpoint: aiEndpoint, model: aiModel, headers: { Authorization: `Bearer ${aiKey}` } }
+              : null
+          }
+          onAdopt={(md, generate) => {
+            setMarkdown(md);
+            if (generate) void run(md);
+          }}
+        />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label>
             目标页数
@@ -385,89 +401,20 @@ export default function ScenePanel() {
               style={{ width: 56, marginLeft: 4 }}
             />
           </label>
-          <label>
-            场景
-            <select
-              value={scene}
-              onChange={(e) => setScene(e.target.value as SceneId | 'auto')}
-              style={{ marginLeft: 4, maxWidth: 260 }}
-            >
-              {SCENE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label title="声明这是什么课：政治类会自动允许乱序换密度，操作系统类会保护对比表不被缩小。识别建议只是提示，选了才生效">
-            学科
-            <select
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              style={{ marginLeft: 4 }}
-            >
-              {SUBJECT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            方向
-            <select
-              value={orientation}
-              onChange={(e) => setOrientation(e.target.value as 'portrait' | 'landscape')}
-              style={{ marginLeft: 4 }}
-            >
-              <option value="portrait">竖版</option>
-              <option value="landscape">横版</option>
-            </select>
-          </label>
-          <label title="在 PDF 上叠加 24 列网格线、每个块的方框和标签；不改变排版本身">
-            <input
-              type="checkbox"
-              checked={debug}
-              onChange={(e) => setDebug(e.target.checked)}
-            />
-            显示网格
-          </label>
-          <label title="要点式材料（如政治「一问几面」）顺序打乱几乎无代价，勾选后允许后面的内容填进前面页的空隙，更省纸。推导/教程类材料（数学、代码）不建议勾选">
-            <input
-              type="checkbox"
-              checked={allowReorder}
-              onChange={(e) => setAllowReorder(e.target.checked)}
-            />
-            允许乱序换密度
-          </label>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            gap: 10,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            padding: '10px 0',
-            borderBottom: '1px solid #e2e8f0',
-          }}
-        >
-          <button
-            onClick={run}
-            disabled={busy}
-            style={{
-              padding: '10px 24px',
-              border: 0,
-              borderRadius: 7,
-              background: busy ? '#94a3b8' : '#4f46e5',
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: 700,
-              cursor: busy ? 'wait' : 'pointer',
-              boxShadow: '0 3px 10px rgba(79, 70, 229, 0.28)',
+          <button onClick={() => fileInputRef.current?.click()}>插入图片</button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f) await insertImageFile(f);
+              e.target.value = '';
             }}
-          >
-            {busy ? '正在排版…' : '📄 生成并预览 PDF'}
+          />
+          <button onClick={() => run()} disabled={busy} style={{ fontWeight: 'bold' }}>
+            {busy ? '排版中…' : '生成 PDF'}
           </button>
           <button
             onClick={runCompress}
@@ -476,10 +423,125 @@ export default function ScenePanel() {
           >
             {aiBusy ? 'AI 精简中…' : '✨ AI 精简'}
           </button>
-          <button onClick={() => setShowAi((v) => !v)} title="选择 AI 厂家、模型并填写 API Key">
+          <button onClick={() => setShowAi((v) => !v)} title="配置 AI 服务商端点 / 模型 / API Key（存本地浏览器）">
             AI 设置 {showAi ? '▴' : '▾'}
           </button>
+          <button
+            onClick={() => setShowAdvanced((v) => !v)}
+            title="场景/学科/方向/网格调试/乱序——应急路径用不到这些，默认全 auto"
+          >
+            高级选项 {showAdvanced ? '▴' : '▾'}
+          </button>
         </div>
+
+        {/* 高级选项：应急路径的 8 个决策点收敛成 1 个（目标页数），其余折叠到这里 */}
+        {showAdvanced && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              padding: 8,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 4,
+              fontSize: 13,
+            }}
+          >
+            <label>
+              场景
+              <select
+                value={scene}
+                onChange={(e) => setScene(e.target.value as SceneId | 'auto')}
+                style={{ marginLeft: 4, maxWidth: 260 }}
+              >
+                {SCENE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label title="声明这是什么课：政治类会自动允许乱序换密度，操作系统类会保护对比表不被缩小。识别建议只是提示，选了才生效">
+              学科
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                style={{ marginLeft: 4 }}
+              >
+                {SUBJECT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              方向
+              <select
+                value={orientation}
+                onChange={(e) => setOrientation(e.target.value as 'portrait' | 'landscape')}
+                style={{ marginLeft: 4 }}
+              >
+                <option value="portrait">竖版</option>
+                <option value="landscape">横版</option>
+              </select>
+            </label>
+            <label title="四边统一页边距。窄边距 = 白捡版面(6mm 约 +7.6%),但太窄可能被打印机裁掉——4mm 请先确认你的打印机支持">
+              边距
+              <select
+                value={marginMm}
+                onChange={(e) => setMarginMm(Number(e.target.value))}
+                style={{ marginLeft: 4 }}
+              >
+                <option value={10}>标准 10mm</option>
+                <option value={8}>紧 8mm</option>
+                <option value={6}>窄 6mm</option>
+                <option value={4}>极窄 4mm（看打印机）</option>
+              </select>
+            </label>
+            <label title="在 PDF 上叠加 24 列网格线、每个块的方框和标签；不改变排版本身">
+              <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} />
+              显示网格
+            </label>
+            <label title="要点式材料（如政治「一问几面」）顺序打乱几乎无代价，勾选后允许后面的内容填进前面页的空隙，更省纸。推导/教程类材料（数学、代码）不建议勾选">
+              <input
+                type="checkbox"
+                checked={allowReorder}
+                onChange={(e) => setAllowReorder(e.target.checked)}
+              />
+              允许乱序换密度
+            </label>
+            <label title="排版定稿后，把柱底/块间空隙上方的块字号微放大（最多 +2pt）填满空隙。想要全文严格等字号就取消勾选">
+              <input
+                type="checkbox"
+                checked={stretchFill}
+                onChange={(e) => setStretchFill(e.target.checked)}
+              />
+              满版伸展
+            </label>
+          </div>
+        )}
+
+        {/* 测试材料速载（生产环境接口 404，此区自动隐藏） */}
+        {fixtures.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+            <span style={{ color: '#64748b' }}>测试材料</span>
+            <select value={fixtureSel} onChange={(e) => setFixtureSel(e.target.value)}>
+              <option value="">选择 fixture…</option>
+              {fixtures.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.name}（{f.sizeKb}KB）
+                </option>
+              ))}
+            </select>
+            <button onClick={loadFixture} disabled={!fixtureSel}>
+              载入（替换文本框）
+            </button>
+            <span style={{ color: '#94a3b8' }}>来自 packages/server/test/fixtures</span>
+          </div>
+        )}
 
         {showAi && (
           <div
@@ -496,44 +558,30 @@ export default function ScenePanel() {
             }}
           >
             <label>
-              厂家
-              <select
-                value={aiProviderId}
+              端点
+              <input
+                type="text"
+                value={aiEndpoint}
                 onChange={(e) => {
-                  const nextId = e.target.value as AiProviderId;
-                  const nextProvider = AI_PROVIDERS[nextId];
-                  const nextModel = nextProvider.models[0].value;
-                  setAiProviderId(nextId);
-                  setAiModel(nextModel);
-                  setAiKey(lsGet(`${AI_KEYS.keyPrefix}.${nextId}`, ''));
-                  lsSet(AI_KEYS.provider, nextId);
-                  lsSet(AI_KEYS.model, nextModel);
+                  setAiEndpoint(e.target.value);
+                  lsSet(AI_KEYS.endpoint, e.target.value);
                 }}
-                style={{ marginLeft: 4, minWidth: 180 }}
-              >
-                {Object.entries(AI_PROVIDERS).map(([id, provider]) => (
-                  <option key={id} value={id}>
-                    {provider.label}
-                  </option>
-                ))}
-              </select>
+                style={{ marginLeft: 4, width: 320 }}
+                placeholder="https://api.openai.com/v1/chat/completions"
+              />
             </label>
             <label>
               模型
-              <select
+              <input
+                type="text"
                 value={aiModel}
                 onChange={(e) => {
                   setAiModel(e.target.value);
                   lsSet(AI_KEYS.model, e.target.value);
                 }}
-                style={{ marginLeft: 4, minWidth: 210 }}
-              >
-                {aiProvider.models.map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.label}
-                  </option>
-                ))}
-              </select>
+                style={{ marginLeft: 4, width: 140 }}
+                placeholder="gpt-4o-mini"
+              />
             </label>
             <label>
               API Key
@@ -542,14 +590,14 @@ export default function ScenePanel() {
                 value={aiKey}
                 onChange={(e) => {
                   setAiKey(e.target.value);
-                  lsSet(`${AI_KEYS.keyPrefix}.${aiProviderId}`, e.target.value);
+                  lsSet(AI_KEYS.key, e.target.value);
                 }}
                 style={{ marginLeft: 4, width: 220 }}
                 placeholder="sk-..."
               />
             </label>
             <span style={{ color: '#64748b' }}>
-              接口地址已预设；API Key 按厂家分别保存在本地浏览器，不落服务器
+              仅 OpenAI 兼容格式；key 存本地浏览器，只在请求内存里过后端，不落服务器
             </span>
           </div>
         )}
@@ -653,6 +701,23 @@ export default function ScenePanel() {
 
         {result && (
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            {/* 学生第一眼要的结论；工程口径全部收进「引擎详情」 */}
+            <div style={{ fontSize: 14 }}>
+              {result.withinTargetPages ? (
+                <b style={{ color: '#15803d' }}>
+                  ✓ 已排进 {result.pages} 页 · 字号 {result.fontSize}pt —— 可以下载打印
+                </b>
+              ) : (
+                <b style={{ color: '#b45309' }}>
+                  ⚠ 目标 {targetPages} 页塞不下：目前最优 {result.pages} 页 / {result.fontSize}
+                  pt —— 加目标页数，或用「✨ AI 精简」删内容再试
+                </b>
+              )}
+            </div>
+            <details style={{ fontSize: 13 }}>
+              <summary style={{ cursor: 'pointer', color: '#64748b' }}>
+                引擎详情（统计 / 推荐理由 / 规则记账 / 搜索轨迹）
+              </summary>
             <div>
               内容统计：正文≈{result.stats.charCount}字 · 独立公式{result.stats.displayFormulaCount} ·
               行内公式{result.stats.inlineFormulaCount} · 图片块{result.stats.imageBlockCount} · 表格
@@ -685,16 +750,137 @@ export default function ScenePanel() {
               {result.withinTargetPages ? '达标 ✓' : '未达标'} · 搜索{' '}
               {result.history.map((h) => `${h.fontSize}pt→${h.pages}页`).join('，')}
             </div>
+            </details>
             {warn.map((w, i) => (
               <div key={i} style={{ color: '#b45309' }}>
                 ⚠️ {w}
               </div>
             ))}
+            {result.diagnostics && (
+              <details style={{ fontSize: 12, marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer' }}>
+                  块诊断：{result.diagnostics.blocks.length} 块 · 总填充{' '}
+                  <b>{result.diagnostics.overallFill}%</b> · 耗时{' '}
+                  {(result.diagnostics.elapsedMs / 1000).toFixed(1)}s · 网格{' '}
+                  {result.diagnostics.grid.unitsX} 列（格 {result.diagnostics.grid.unitMm}mm · 留白{' '}
+                  {result.diagnostics.grid.gutterMm}mm）
+                </summary>
+                {/* 每页填充条：低于 60% 灰（松）、正常蓝、超 100%（有超高块）红 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '6px 0' }}>
+                  {result.diagnostics.pageFill.map((f, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 44 }}>第{i + 1}页</span>
+                      <div style={{ flex: 1, maxWidth: 260, height: 10, background: '#e2e8f0', borderRadius: 2 }}>
+                        <div
+                          style={{
+                            width: `${Math.min(f, 100)}%`,
+                            height: '100%',
+                            borderRadius: 2,
+                            background: f > 100 ? '#dc2626' : f < 60 ? '#94a3b8' : '#3b82f6',
+                          }}
+                        />
+                      </div>
+                      <span>{f}%</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        {['块', '类型', '宽(格)', '页', '高(mm)', '缩放', '公式缩放', '提示'].map((h) => (
+                          <th key={h} style={cellTh}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.diagnostics.blocks.map((b) => (
+                        <tr
+                          key={b.id}
+                          style={{
+                            background: b.oversized ? '#fee2e2' : b.belowMinScale ? '#fef3c7' : undefined,
+                          }}
+                        >
+                          <td style={cellTd} title={b.id}>
+                            {b.title}
+                          </td>
+                          <td style={cellTd}>{b.kind === 'image' ? '图' : '文'}</td>
+                          <td style={cellTd}>{b.span}</td>
+                          <td style={cellTd}>{b.page ?? '—'}</td>
+                          <td style={cellTd}>{b.heightMm ?? '—'}</td>
+                          <td style={cellTd}>{b.scale < 1 ? `×${b.scale}` : '—'}</td>
+                          <td style={cellTd}>{b.formulaScale < 1 ? `×${b.formulaScale}` : '—'}</td>
+                          <td style={cellTd}>
+                            {b.oversized ? '⛔ 超高截断' : b.belowMinScale ? '⚠️ 缩过可读限' : ''}
+                            {b.stretchedPt ? ` ↗${b.stretchedPt}pt` : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
           </div>
         )}
-          </>
+
+        {/* 会话历史：每次生成一行，改一个参数再生成即可对照（Δ 相对上一行） */}
+        {runs.length > 0 && (
+          <details open={runs.length > 1} style={{ fontSize: 12 }}>
+            <summary style={{ cursor: 'pointer' }}>
+              本次会话历史（{runs.length} 次）
+              <button
+                style={{ marginLeft: 8 }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setRuns([]);
+                }}
+              >
+                清空
+              </button>
+            </summary>
+            <div style={{ maxHeight: 140, overflow: 'auto', marginTop: 4 }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    {['#', '配置', '字号', '页数', '达标', '填充', '耗时'].map((h) => (
+                      <th key={h} style={cellTh}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((r, i) => {
+                    const prev = i > 0 ? runs[i - 1] : null;
+                    const d = prev ? Math.round((r.fontSize - prev.fontSize) * 10) / 10 : 0;
+                    return (
+                      <tr key={i}>
+                        <td style={cellTd}>{i + 1}</td>
+                        <td style={cellTd}>{r.config}</td>
+                        <td style={cellTd}>
+                          <b>{r.fontSize}pt</b>
+                          {prev && d !== 0 && (
+                            <span style={{ color: d > 0 ? '#15803d' : '#b91c1c', marginLeft: 4 }}>
+                              {d > 0 ? `▲+${d}` : `▼${d}`}
+                            </span>
+                          )}
+                        </td>
+                        <td style={cellTd}>{r.pages}</td>
+                        <td style={cellTd}>{r.ok ? '✓' : '✗'}</td>
+                        <td style={cellTd}>{r.fill !== null ? `${r.fill}%` : '—'}</td>
+                        <td style={cellTd}>{r.secs !== null ? `${r.secs}s` : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
-      </DocumentDropSurface>
+      </div>
 
       {/* 右：PDF 预览 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
@@ -723,5 +909,7 @@ export default function ScenePanel() {
         )}
       </div>
     </div>
+      )}
+    </DocumentDropSurface>
   );
 }
