@@ -539,3 +539,15 @@ bench：network-tables 75→80（端口/IP 表恢复全尺寸，目检确认）�
 os-large 页1 −4pp 换两张表 0.60→0.81/0.50→0.75（16.5pt 下约 9pt→12pt 有效字号，
 字号页数均未动）。override 契约升级为 overrides 数组（救援可多块链式）。
 回归锁 2 例（grid-search.test.ts 站⑤⑥），基线已更新。
+
+**站⑦⑧ + 支撑文件（收官核查，无改动）**：pack-blocks 有 60 种子随机压测不变量套件
++ 本周五连修战疤，render-layout/render-assets 的原子机制在本轮全部目检中反复验证——
+两站核查通过，不为改而改。支撑文件（md-to-html/code-comments 本周新验、
+precheck-formulas 纯上报、job-store/pdf-name 琐碎、browser-pool 属性能域、
+atom-mask/ai-* 的 prompt 质量没有评测材料不盲调）全部核查通过。
+
+**战役收官账（2026-07-26，七站 + 基准）**：改动 4 处（H1 独立成块/URL 剥离/短别名
+双次线/深压缩救援）+ 孤儿清理 2 处；无罪判决 5 项（切块粒度、规则逻辑、adjudicate、
+pack、render）。bench 累计：cs 13.5→14.5pt、network-tables 75→80、poli-econ
+98→99、真材料 data-analysis 全程 13pt/98+97 未动摇。测试 83→88，每处改动有回归锁。
+阈值数字零改动——校准继续等真材料。
