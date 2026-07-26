@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { optimizeRouter } from './routes/optimize.js';
 import { exportRouter } from './routes/export.js';
 import { aiRouter } from './routes/ai.js';
 import { sceneRouter } from './routes/scene.js';
@@ -26,7 +25,6 @@ if (ACCESS_CODE) {
 }
 
 // Routes
-app.use('/api', optimizeRouter);
 app.use('/api', exportRouter);
 app.use('/api', aiRouter);
 app.use('/api', sceneRouter);

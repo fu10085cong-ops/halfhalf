@@ -8,9 +8,8 @@
  * 只是几何从"3~4 根粗栏"细化成"24 根单位列"，宽度档位比栏数更多、对齐粒度更细，
  * 也是将来编辑器拖拽/缩放吸附的坐标系。skyline 的 span 直接复用为"跨几格"。
  *
- * 标准块尺寸（STANDARD_CARDS）在自动模式只用宽度档位 + 高度取整格；
- * 固定宽×高的卡片尺寸是编辑器的预设档 + AI 生成内容的长度目标，不在这里强套
- * ——把任意长度的内容硬塞进固定高度的卡片只会产生大量留白或溢出。
+ * 自动模式只用宽度档位 + 高度自然生长；固定宽×高的"标准卡"是编辑器的预设概念
+ * （见 DESIGN.md ③ 层），不在这里强套——任意长度内容硬塞固定高度只会留白或溢出。
  */
 import type { Density, Margins, PaperSize, ResolvedOrientation } from '../types/index.js';
 import { PAPER_SIZES, SEARCH_CONFIG } from '../types/index.js';
@@ -48,22 +47,6 @@ export const GRID_DEFAULTS = {
    */
   maxAspect: 2,
 } as const;
-
-/**
- * 标准块尺寸预设（宽×高，单位：格）。编辑器的新建/吸附档位，
- * 也是 AI 压缩模块的内容长度目标（"一段内容约一张中卡"）。
- * 宽度取自 widthTiers（6/8/12/16/24 = 1/4、1/3、1/2、2/3、整页宽）。
- */
-export const STANDARD_CARDS = [
-  { name: '迷你卡', w: 6, h: 6 },
-  { name: '窄长卡', w: 6, h: 12 },
-  { name: '小卡', w: 8, h: 6 },
-  { name: '高卡', w: 8, h: 16 },
-  { name: '中卡', w: 12, h: 10 },
-  { name: '大卡', w: 12, h: 16 },
-  { name: '宽卡', w: 16, h: 10 },
-  { name: '通栏', w: 24, h: 6 },
-] as const;
 
 export interface GridSearchParams {
   markdown: string;
