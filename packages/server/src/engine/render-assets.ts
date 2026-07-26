@@ -72,7 +72,10 @@ export async function applyAtomScaling(page: Page): Promise<void> {
     const inlineKatex = Array.from(document.querySelectorAll<HTMLElement>('.hh-page .katex')).filter(
       (el) => !el.closest('.katex-display')
     );
-    for (const el of [...atoms, ...inlineKatex]) {
+    const codeLines = Array.from(
+      document.querySelectorAll<HTMLElement>('.hh-page pre .line')
+    );
+    for (const el of [...atoms, ...inlineKatex, ...codeLines]) {
       el.style.transform = '';
       el.style.transformOrigin = '';
       el.style.marginBottom = '';
@@ -104,7 +107,30 @@ export async function applyAtomScaling(page: Page): Promise<void> {
         el.dataset.hhScale = String(cw / naturalW);
       }
     }
+    // 代码块逐行缩放：一行超宽只缩那一行（Shiki 每行是一个 .line span），
+    // 其余行保持全尺寸——此前整块按最长行缩放，一条长行连累全部代码变小。
+    // 行级 data-hh-scale 照常汇入块 scale（最差行进 minScale 选档保护）。
+    // 布局高度不变（transform 不参与布局），测量与渲染天然一致。
     for (const el of atoms) {
+      if (el.tagName !== 'PRE') continue;
+      const lines = Array.from(el.querySelectorAll<HTMLElement>('.line'));
+      if (lines.length === 0) continue; // 无行结构（fallback pre）走下面的整块缩放
+      const cs = getComputedStyle(el);
+      const avail =
+        el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      for (const line of lines) {
+        const w = line.getBoundingClientRect().width;
+        if (w > avail + 1) {
+          const s = Math.max(avail / w, 0.1);
+          line.style.display = 'inline-block'; // transform 对非替换行内元素不生效
+          line.style.transform = `scale(${s})`;
+          line.style.transformOrigin = 'left center';
+          line.dataset.hhScale = String(s);
+        }
+      }
+    }
+    for (const el of atoms) {
+      if (el.tagName === 'PRE' && el.querySelector('.line')) continue; // 已逐行处理
       const container = el.closest<HTMLElement>('.hh-page');
       if (!container) continue;
       const cw = container.clientWidth;
