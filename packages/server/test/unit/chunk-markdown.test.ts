@@ -87,3 +87,13 @@ test('结构良好的材料切块行为不变（标题切分 + 前言块）', ()
     ['文档', '一', '二']
   );
 });
+
+test('真材料判例(Java 复习资料):多个 # 章头只豁免文档标题,后续空章头并入下一节', () => {
+  const doc = `# 书名\n\n# 第一章\n\n## 1.1 概念\n\n正文 A。\n\n# 第二章\n\n## 2.1 方法\n\n正文 B。`;
+  const blocks = chunkMarkdown(doc);
+  assert.equal(blocks[0].markdown.trim(), '# 书名', '文档标题独立成封面卡');
+  const ch1 = blocks.find((b) => b.markdown.includes('## 1.1'));
+  assert.ok(ch1 && ch1.markdown.startsWith('# 第一章'), '第一章空章头并入 1.1');
+  const ch2 = blocks.find((b) => b.markdown.includes('## 2.1'));
+  assert.ok(ch2 && ch2.markdown.startsWith('# 第二章'), '第二章空章头并入 2.1');
+});

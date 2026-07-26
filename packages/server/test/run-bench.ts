@@ -38,6 +38,9 @@ const SUITE = [
   { file: 'network-tables.md', targetPages: 1, marginMm: 10, reorder: false },
   { file: 'word-paste.md', targetPages: 1, marginMm: 10, reorder: false },
   { file: 'history-long.md', targetPages: 2, marginMm: 10, reorder: false },
+  // 真实材料（2026-07-26 入库）：编程课/表格课画像的第一批真判例
+  { file: 'java-oop.md', targetPages: 2, marginMm: 10, reorder: false },
+  { file: 'db-systems.md', targetPages: 2, marginMm: 10, reorder: false },
 ] as const;
 
 interface BenchRow {
