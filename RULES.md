@@ -518,3 +518,12 @@ data URI 截图把 ~20 字正文虚增成 4044"字"，cram≥1500 误触发）�
 全部阈值静默重标定，错的是那行"剥掉表格"的注释（已更正，代码从未剥过）。
 另记：inlineFormulaCount 的 `$5…$10` 钱符号误报确认存在但不参与任何决策（纯展示），
 不修。回归锁已加（rule-engine.test.ts 站②）。
+
+**站③ rule-engine + subject-rules（决策层）**：逻辑逐条过审——硬约束交集、密度
+上下界、B1 双跑分叉、S1 诚实记账（nearMiss）均无缺陷，else-if 链恰好总取最严
+maxAspect；**阈值数字一个未动**（全部 ◐，校准只认真材料，§4.2 铁律）。两处外围
+修缮：① `recommendScene` 零调用孤儿删除；② 学科识别误报实锤——两字别名「能带」
+子串命中管理学材料的"不**能带**来满意"，建议了半导体。改判：≤2 字短别名需出现
+≥2 次才算证据（真术语必反复出现，双次线不伤召回），长别名一次即可。dump-features
+全量复核：仅 word-paste 的误建议消失，合法建议（os/semiconductor/calculus/politics）
+全保留。bench 与基线完全一致，回归锁已加（subject-rules.test.ts 站③）。

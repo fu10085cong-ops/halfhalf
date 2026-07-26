@@ -81,7 +81,13 @@ export function suggestSubject(
 ): { id: string; name: string; matchedAliases: string[] } | null {
   let best: { id: string; name: string; matchedAliases: string[] } | null = null;
   for (const rule of Object.values(SUBJECT_RULES)) {
-    const matched = rule.aliases.filter((a) => markdown.includes(a));
+    // ≤2 字的短别名需出现 ≥2 次才算证据：两字词太容易撞上普通句子的子串——
+    // 真实误报（2026-07-26 站③）：「能带」命中管理学材料的"不能带来满意"，
+    // 给纯文科材料建议了半导体。真材料里的学科术语通常反复出现，双次线不伤召回。
+    const matched = rule.aliases.filter((a) => {
+      const count = markdown.split(a).length - 1;
+      return a.length > 2 ? count >= 1 : count >= 2;
+    });
     if (matched.length > 0 && (best === null || matched.length > best.matchedAliases.length)) {
       best = { id: rule.id, name: rule.name, matchedAliases: matched };
     }

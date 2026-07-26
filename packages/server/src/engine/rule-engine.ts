@@ -265,15 +265,3 @@ function deriveCore(
   };
 }
 
-/**
- * 场景推荐（规则引擎的薄包装，保持旧签名）：scene 是"最接近的预设"，
- * 供前端下拉框展示；自动模式的实际参数请直接用 deriveLayoutParams 的 params。
- */
-export function recommendScene(stats: ContentStats): {
-  scene: SceneId;
-  reason: string;
-  warning?: string;
-} {
-  const r = deriveLayoutParams(stats);
-  return { scene: r.sceneEquivalent, reason: r.reason, warning: r.warning };
-}
