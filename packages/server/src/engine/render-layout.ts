@@ -37,6 +37,11 @@ export interface BlockRect {
   yMm: number;
   /** 内容盒宽度 mm */
   wMm: number;
+  /**
+   * 该块的字号覆盖 pt（满版伸展）。以 CSS 变量形式写在块容器上——
+   * .hh-page 的 font-size: var(--font-size) 就作用在容器自身，整个子树随之缩放。
+   */
+  fontSizePt?: number;
 }
 
 /**
@@ -113,8 +118,9 @@ export async function renderRectsPdf(
       const label = ov
         ? `<span class="hh-debug-label">${block.id}·${Math.round((rect.wMm + ov.gutterMm) / ov.unitMm)}格</span>`
         : '';
+      const fontVar = rect.fontSizePt !== undefined ? `;--font-size:${rect.fontSizePt}pt` : '';
       blockHtmls.push(
-        `<div class="hh-page layout-block" style="left:${rect.xMm}mm;top:${rect.yMm}mm;width:${rect.wMm}mm">${uniqueHtml}${label}</div>`
+        `<div class="hh-page layout-block" style="left:${rect.xMm}mm;top:${rect.yMm}mm;width:${rect.wMm}mm${fontVar}">${uniqueHtml}${label}</div>`
       );
     }
     pagesHtml.push(

@@ -84,6 +84,8 @@ export interface BlockDiagnostic {
   formulaScale: number;
   belowMinScale: boolean;
   oversized: boolean;
+  /** 满版伸展后的块级字号 pt（null = 未放大，用全局字号） */
+  stretchedPt?: number | null;
 }
 
 export interface SceneDiagnostics {

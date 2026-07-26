@@ -135,6 +135,8 @@ export default function ScenePanel() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   // 四边统一页边距 mm。6mm 比默认 10mm 白捡约 7.6% 版面;4mm 贴近多数打印机的物理极限
   const [marginMm, setMarginMm] = useState(10);
+  // 满版伸展:定稿后逐块微放大字号(≤+2pt)填掉正下方空隙,默认开
+  const [stretchFill, setStretchFill] = useState(true);
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [debug, setDebug] = useState(false);
@@ -224,6 +226,7 @@ export default function ScenePanel() {
           allowReorder,
           subject: subject || undefined,
           marginMm,
+          stretchFill,
         }),
       });
       const data = await resp.json();
@@ -241,6 +244,7 @@ export default function ScenePanel() {
             orientation === 'landscape' ? '横' : '竖',
             allowReorder ? '乱序' : null,
             marginMm !== 10 ? `边距${marginMm}mm` : null,
+            !stretchFill ? '不伸展' : null,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -485,6 +489,14 @@ export default function ScenePanel() {
                 onChange={(e) => setAllowReorder(e.target.checked)}
               />
               允许乱序换密度
+            </label>
+            <label title="排版定稿后，把柱底/块间空隙上方的块字号微放大（最多 +2pt）填满空隙。想要全文严格等字号就取消勾选">
+              <input
+                type="checkbox"
+                checked={stretchFill}
+                onChange={(e) => setStretchFill(e.target.checked)}
+              />
+              满版伸展
             </label>
           </div>
         )}
@@ -777,6 +789,7 @@ export default function ScenePanel() {
                           <td style={cellTd}>{b.formulaScale < 1 ? `×${b.formulaScale}` : '—'}</td>
                           <td style={cellTd}>
                             {b.oversized ? '⛔ 超高截断' : b.belowMinScale ? '⚠️ 缩过可读限' : ''}
+                            {b.stretchedPt ? ` ↗${b.stretchedPt}pt` : ''}
                           </td>
                         </tr>
                       ))}

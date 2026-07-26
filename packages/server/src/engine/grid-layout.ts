@@ -92,6 +92,14 @@ export interface GridSearchParams {
   precision?: number;
   /** 本地图片解析基准目录，透传做 base64 内嵌 */
   imageBaseDir?: string;
+  /**
+   * 满版伸展（默认开）：搜索定稿后，把每块的字号向上多试几步（0.5pt 一步），
+   * 让它"向下长"填掉正下方的空隙——柱底/块间的锯齿空白换成更大的字。
+   * 不改变页数与搜索结果，只是块级的收尾放大；关掉即回老行为。
+   */
+  stretchFill?: boolean;
+  /** 满版伸展的字号上限增量 pt，默认 2（太大则相邻块字号差异扎眼） */
+  stretchCapPt?: number;
 }
 
 export interface GridTrial {
@@ -104,6 +112,40 @@ export interface GridTrial {
   oversized: string[];
   /** 跨满最大档位仍需缩到可读下限以下的块 */
   cramped: string[];
+  /** 满版伸展的结果：块 id → 放大后的字号与新高度（只含被放大的块） */
+  stretched?: Record<string, StretchedBlock>;
+}
+
+export interface StretchedBlock {
+  fontSize: number;
+  heightPx: number;
+}
+
+/**
+ * 每块"正下方的可伸展空隙"mm：块是顶端定位、向下生长，紧挨其下的块（同页且
+ * 列区间重叠、顶边不高于本块底边）的顶边——或页底——就是它的伸展极限。
+ * 空隙只属于上方的块（下方块不会上移），所以逐块独立伸展互不冲突。
+ */
+export function computeStretchGaps(
+  placements: Placement[],
+  boxHeightMm: Map<string, number>,
+  contentHMm: number
+): Map<string, number> {
+  const gaps = new Map<string, number>();
+  for (const p of placements) {
+    const h = boxHeightMm.get(p.id);
+    if (h === undefined) continue;
+    const bottom = p.yMm + h;
+    let limit = contentHMm;
+    for (const q of placements) {
+      if (q.id === p.id || q.page !== p.page) continue;
+      const overlaps = q.column < p.column + p.span && p.column < q.column + q.span;
+      if (overlaps && q.yMm >= bottom - 0.01 && q.yMm < limit) limit = q.yMm;
+    }
+    const gap = limit - bottom;
+    if (gap > 0.5) gaps.set(p.id, gap);
+  }
+  return gaps;
 }
 
 export interface GridSearchOutcome {
@@ -167,10 +209,15 @@ export async function renderGridPdf(
   blocks: ContentBlock[],
   placements: Placement[],
   grid: GridSpec,
-  /** debug: 画出网格线 + 块方框 + 标签（叠加层不参与布局，排版与正式版一致） */
-  opts: RectRenderOptions & { debug?: boolean }
+  /** debug: 画出网格线 + 块方框 + 标签（叠加层不参与布局，排版与正式版一致）
+   *  stretched: 满版伸展的块级字号覆盖（搜索定稿后的收尾放大，见 searchGridFontSize） */
+  opts: RectRenderOptions & { debug?: boolean; stretched?: Record<string, StretchedBlock> }
 ): Promise<{ pdfBuffer: Buffer; pageCount: number }> {
-  return renderRectsPdf(blocks, gridPlacementsToRects(placements, grid), {
+  const rects = gridPlacementsToRects(placements, grid).map((r) => {
+    const s = opts.stretched?.[r.id];
+    return s ? { ...r, fontSizePt: s.fontSize } : r;
+  });
+  return renderRectsPdf(blocks, rects, {
     ...opts,
     overlay: opts.debug
       ? { unitMm: grid.unitMm, unitsX: grid.unitsX, gutterMm: grid.gutterMm }
@@ -293,6 +340,44 @@ export async function searchGridFontSize(
         }
       }
     }
+  }
+
+  // —— 满版伸展：定稿后逐块把字号向上多试几步，填掉各自正下方的空隙。
+  // 只在最终结果上跑一次（每步一轮测量），不进二分循环；页数/搜索结果不受影响。
+  if (params.stretchFill !== false) {
+    const stretched: Record<string, StretchedBlock> = {};
+    const boxH = new Map(
+      best.measurements.map((m) => [m.id, m.heightPx / PX_PER_MM + grid.gutterMm])
+    );
+    const gaps = computeStretchGaps(best.placements, boxH, contentHMm);
+    if (gaps.size > 0) {
+      const capPt = params.stretchCapPt ?? 2;
+      const imageIds = new Set(blocks.filter((b) => b.kind === 'image').map((b) => b.id));
+      const placeById = new Map(best.placements.map((p) => [p.id, p]));
+      for (let step = 0.5; step <= capPt + 1e-9; step += 0.5) {
+        const ms = await measureBlocks(blocks, {
+          candidates,
+          fontSize: best.fontSize + step,
+          density: params.density,
+          minScale: params.minScale,
+          maxAspect: params.maxAspect ?? GRID_DEFAULTS.maxAspect,
+          htmlById,
+        });
+        for (const m of ms) {
+          if (imageIds.has(m.id)) continue; // 图片高度与字号无关，放大无意义
+          const gap = gaps.get(m.id);
+          if (gap === undefined) continue;
+          const pl = placeById.get(m.id);
+          // 大字号下选档变了 → 高度不在同一宽度下，不可比，该步放弃
+          if (!pl || m.span !== pl.span) continue;
+          const newBox = m.heightPx / PX_PER_MM + grid.gutterMm;
+          if (newBox <= (boxH.get(m.id) ?? 0) + gap) {
+            stretched[m.id] = { fontSize: best.fontSize + step, heightPx: m.heightPx };
+          }
+        }
+      }
+    }
+    if (Object.keys(stretched).length > 0) best = { ...best, stretched };
   }
 
   return {

@@ -48,6 +48,11 @@ interface SceneRequest {
    * （多数打印机 5mm 内安全）；低于 3mm 基本必被打印机裁掉，不放行。
    */
   marginMm?: number;
+  /**
+   * 满版伸展（默认开）：搜索定稿后逐块微放大字号（≤+2pt），把柱底/块间的
+   * 空隙换成更大的字。false = 关（全文严格等字号的老行为）。
+   */
+  stretchFill?: boolean;
 }
 
 function validate(body: SceneRequest): string | null {
@@ -112,6 +117,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       paperSize: 'A4' as const,
       orientation,
       margins,
+      stretchFill: body.stretchFill !== false,
     };
 
     // 自动模式用规则引擎的交集参数（多类刚性原子同时保护），模糊带内双跑实测裁决（B1）；
@@ -151,6 +157,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         fontSize: best.fontSize,
         density: renderDensity,
         debug: body.debug === true,
+        stretched: best.stretched,
       }
     );
 
@@ -161,9 +168,11 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
     const { contentHMm } = resolveGrid({ paperSize: 'A4', orientation, margins });
     const measById = new Map(best.measurements.map((m) => [m.id, m]));
     const placeById = new Map(best.placements.map((p) => [p.id, p]));
+    const stretchedMap = best.stretched ?? {};
     const boxHeightMm = (id: string): number | null => {
-      const m = measById.get(id);
-      return m ? m.heightPx / PX_PER_MM + grid.gutterMm : null;
+      // 满版伸展过的块按放大后的实际高度算，填充率才如实
+      const heightPx = stretchedMap[id]?.heightPx ?? measById.get(id)?.heightPx;
+      return heightPx !== undefined ? heightPx / PX_PER_MM + grid.gutterMm : null;
     };
     const pageAreas = new Map<number, number>();
     for (const p of best.placements) {
@@ -195,6 +204,8 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
           formulaScale: m ? Math.round(m.formulaScale * 100) / 100 : 1,
           belowMinScale: m?.belowMinScale ?? false,
           oversized: best.oversized.includes(b.id),
+          // 满版伸展后的块级字号（null = 未放大，仍是全局字号）
+          stretchedPt: stretchedMap[b.id]?.fontSize ?? null,
         };
       }),
       pageFill: Array.from({ length: fillPages }, (_, i) =>

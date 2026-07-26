@@ -58,8 +58,12 @@ interface SceneRequest {
 }
 ```
 
-请求 body 另支持 `marginMm?: number`（四边统一页边距毫米，3~25，省略 = 默认 10；
-6mm 比默认多约 7.6% 版面，4mm 以下注意打印机物理边界）。
+请求 body 另支持：
+- `marginMm?: number`——四边统一页边距毫米（3~25，省略 = 默认 10；6mm 比默认多约
+  7.6% 版面，4mm 以下注意打印机物理边界）；
+- `stretchFill?: boolean`——满版伸展（默认 true）：搜索定稿后逐块微放大字号（≤+2pt），
+  把柱底/块间空隙换成更大的字；被放大的块在 `diagnostics.blocks[].stretchedPt` 里可见。
+  false = 全文严格等字号。
 
 搜索达标判据：页数进目标 **且内容完整**——存在超高截断块的试探不会被选为最优
 （例外：最小字号下就超高的块，字号救不了，退回尽力交付 + `warnings.oversized`）。
