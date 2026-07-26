@@ -100,6 +100,12 @@ export interface GridSearchParams {
   stretchFill?: boolean;
   /** 满版伸展的字号上限增量 pt，默认 2（太大则相邻块字号差异扎眼） */
   stretchCapPt?: number;
+  /**
+   * 硬疙瘩联合选档（默认开）：拼装时给"高过内容区 45% 的高大块"试更宽的档
+   * （变矮好塞），页数严格变少才采用。治"大表格把 2 页顶成 3 页"的悬崖。
+   * 关掉即回"每块先选档、拼装不商量"的老行为。
+   */
+  jointSpan?: boolean;
 }
 
 export interface GridTrial {
@@ -240,6 +246,58 @@ export function isAcceptableTrial(
   return t.pages <= effectiveTarget && (!gateOversized || t.oversized.length === 0);
 }
 
+/**
+ * 硬疙瘩联合选档：先按每块自选的档拼一次；若有"盒高超过内容区 45%"的高大文字块，
+ * 逐个用测量白送的 bySpan 数据换更宽的档（变矮）重拼，**页数严格更少**才采用
+ * （平页数不换——避免无谓地改变既有判例的版面）。变体必须 scale ≥ minScale，
+ * 不许靠把内容缩到不可读来换宽档。零额外浏览器开销（逐档高度测量时本来就量过）。
+ *
+ * 真实判例（2026-07-26 数据分析材料，2 页目标）：13pt 时 257mm 的工具对比表
+ * 把 2 页顶成 3 页；换 16 格（105mm）后 2 页/84%——字号悬崖从 12.5 推高到 13pt。
+ */
+export function packWithNuggetVariants(
+  items: { id: string; heightMm: number; span: number }[],
+  measurements: BlockMeasurement[],
+  opts: {
+    geo: { columnHeightMm: number; columnsPerPage: number; gapMm: number };
+    gutterMm: number;
+    strategy: PackStrategy;
+    pack: { repack?: boolean; backfill?: boolean };
+    minScale: number;
+  }
+): {
+  result: ReturnType<typeof packBlocks>;
+  override: { id: string; span: number; heightPx: number; scale: number; formulaScale: number } | null;
+} {
+  const base = packBlocks(items, opts.geo, opts.strategy, opts.pack);
+  const byId = new Map(measurements.map((m) => [m.id, m]));
+  // 高大块按高度降序，最多试 6 个。不能只取前 2：真实判例里 190/187mm 的高散文块
+  // 比 148mm 的表格更高、却换宽档救不了页数——真凶往往不是最高的那个。
+  // 变体重拼是纯计算（微秒级），多试几个候选没有成本；上限 6 只是防御性护栏。
+  const nuggets = items
+    .filter((i) => i.heightMm > opts.geo.columnHeightMm * 0.45 && byId.get(i.id)?.bySpan)
+    .sort((a, z) => z.heightMm - a.heightMm)
+    .slice(0, 6);
+
+  let best = base;
+  let override: ReturnType<typeof packWithNuggetVariants>['override'] = null;
+  for (const nug of nuggets) {
+    const bySpan = byId.get(nug.id)!.bySpan!;
+    for (const [spanStr, v] of Object.entries(bySpan)) {
+      const span = Number(spanStr);
+      if (span <= nug.span || v.scale < opts.minScale) continue;
+      const hMm = v.heightPx / PX_PER_MM + opts.gutterMm;
+      const variant = items.map((i) => (i.id === nug.id ? { ...i, span, heightMm: hMm } : i));
+      const res = packBlocks(variant, opts.geo, opts.strategy, opts.pack);
+      if (res.pages < best.pages) {
+        best = res;
+        override = { id: nug.id, span, heightPx: v.heightPx, scale: v.scale, formulaScale: v.formulaScale };
+      }
+    }
+  }
+  return { result: best, override };
+}
+
 export async function searchGridFontSize(
   params: GridSearchParams,
   onProgress?: (t: { fontSize: number; pages: number }) => void
@@ -275,23 +333,47 @@ export async function searchGridFontSize(
     // 实测 19 块的材料因此膨胀 16%、硬生生多出一页。取整只买到"块顶边落在格线上"的
     // 视觉对齐，而编辑器的拖拽吸附是拖拽时现算的、不依赖自动版预先取整——用页数换对齐
     // 不划算。横向仍吸标准宽度档（那里的对齐才有视觉价值）。
-    const packResult = packBlocks(
-      measurements.map((m) => ({
-        id: m.id,
-        heightMm: m.heightPx / PX_PER_MM + grid.gutterMm,
-        span: m.span,
-      })),
-      geo,
-      params.strategy,
-      { repack: params.repack, backfill: params.backfill }
-    );
+    const items = measurements.map((m) => ({
+      id: m.id,
+      heightMm: m.heightPx / PX_PER_MM + grid.gutterMm,
+      span: m.span,
+    }));
+    const packOpts = { repack: params.repack, backfill: params.backfill };
+    let packResult: ReturnType<typeof packBlocks>;
+    let effMeasurements = measurements;
+    if (params.jointSpan !== false) {
+      const { result, override } = packWithNuggetVariants(items, measurements, {
+        geo,
+        gutterMm: grid.gutterMm,
+        strategy: params.strategy,
+        pack: packOpts,
+        minScale: params.minScale,
+      });
+      packResult = result;
+      if (override) {
+        // 换档生效：下游（渲染宽度/伸展/诊断）必须看到换档后的真实档位与高度
+        effMeasurements = measurements.map((m) =>
+          m.id === override.id
+            ? {
+                ...m,
+                span: override.span,
+                heightPx: override.heightPx,
+                scale: override.scale,
+                formulaScale: override.formulaScale,
+              }
+            : m
+        );
+      }
+    } else {
+      packResult = packBlocks(items, geo, params.strategy, packOpts);
+    }
     return {
       fontSize,
       pages: packResult.pages,
       placements: packResult.placements,
-      measurements,
+      measurements: effMeasurements,
       oversized: packResult.oversized,
-      cramped: measurements.filter((m) => m.belowMinScale).map((m) => m.id),
+      cramped: effMeasurements.filter((m) => m.belowMinScale).map((m) => m.id),
     };
   };
 

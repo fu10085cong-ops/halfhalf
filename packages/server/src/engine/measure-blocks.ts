@@ -45,6 +45,11 @@ export interface BlockMeasurement {
   formulaScale: number;
   /** true = 即使跨满 maxSpan，内容仍需缩到 minScale 以下才能塞下（可读性存疑，上层应提示） */
   belowMinScale: boolean;
+  /**
+   * 文字块在**每个**候选宽度档下的测量结果（测量本来就逐档渲染过，白送的数据）。
+   * 拼装层的"硬疙瘩联合选档"用它给高大块试更宽的档，不必重开浏览器。图片块不带。
+   */
+  bySpan?: Record<number, { heightPx: number; scale: number; formulaScale: number }>;
 }
 
 /** 一个候选宽度档位：span 是拼装坐标系里的跨度（栏数/格数），widthPx 是该档位的内容盒宽 */
@@ -233,6 +238,10 @@ ${containers.join('\n')}
               fits[fits.length - 1];
         const chosen =
           shapely ?? cands.reduce((best, c) => (c.scale > best.scale ? c : best), cands[0]);
+        const bySpan: NonNullable<BlockMeasurement['bySpan']> = {};
+        for (const c of cands) {
+          bySpan[c.span] = { heightPx: c.heightPx, scale: c.scale, formulaScale: c.formulaScale };
+        }
         results.push({
           id: b.id,
           span: chosen.span,
@@ -240,6 +249,7 @@ ${containers.join('\n')}
           scale: chosen.scale,
           formulaScale: chosen.formulaScale,
           belowMinScale: fits.length === 0,
+          bySpan,
         });
       }
       return results;

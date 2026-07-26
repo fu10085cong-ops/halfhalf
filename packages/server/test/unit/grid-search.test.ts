@@ -64,6 +64,81 @@ test('stretch: 跨多列的块取各列限制的最小值', () => {
   assert.equal(gaps.get('b'), undefined); // b 底 = 60+40 = 100 = 页底,无隙不入表
 });
 
+// —— 硬疙瘩联合选档（packWithNuggetVariants）——
+// 复刻真实判例的几何：高大块按默认档拼要多开一页，换宽档（变矮）后省回来。
+
+import { packWithNuggetVariants } from '../../src/engine/grid-layout.js';
+import { PX_PER_MM } from '../../src/engine/measure-blocks.js';
+import type { BlockMeasurement } from '../../src/engine/measure-blocks.js';
+
+const GEO = { columnHeightMm: 100, columnsPerPage: 24, gapMm: 0 };
+const JOPTS = { geo: GEO, gutterMm: 0, strategy: 'column-flow' as const, pack: { repack: true }, minScale: 0.5 };
+
+function meas(id: string, span: number, hMm: number, bySpanMm?: Record<number, [number, number]>): BlockMeasurement {
+  const bySpan = bySpanMm
+    ? Object.fromEntries(
+        Object.entries(bySpanMm).map(([s, [h, scale]]) => [s, { heightPx: h * PX_PER_MM, scale, formulaScale: 1 }])
+      )
+    : undefined;
+  return { id, span, heightPx: hMm * PX_PER_MM, scale: 1, formulaScale: 1, belowMinScale: false, bySpan };
+}
+
+test('jointSpan: 高大块换宽档后页数变少 → 采用并回报 override', () => {
+  // a 通栏 50mm → t(8格,90mm) 塞不进剩余 50 → 独占第 2 页 → b 通栏又开第 3 页;
+  // t 换 16 格只有 45mm,跟在 a 下面,b 第 2 页——3 页变 2 页
+  const items = [
+    { id: 'a', span: 24, heightMm: 50 },
+    { id: 't', span: 8, heightMm: 90 },
+    { id: 'b', span: 24, heightMm: 40 },
+  ];
+  const ms = [meas('a', 24, 50), meas('t', 8, 90, { 8: [90, 1], 16: [45, 1] }), meas('b', 24, 40)];
+  const { result, override } = packWithNuggetVariants(items, ms, JOPTS);
+  assert.equal(result.pages, 2);
+  assert.equal(override?.id, 't');
+  assert.equal(override?.span, 16);
+});
+
+test('jointSpan: 变体 scale 低于 minScale（缩到不可读换宽档）不采用', () => {
+  const items = [
+    { id: 'a', span: 24, heightMm: 50 },
+    { id: 't', span: 8, heightMm: 90 },
+    { id: 'b', span: 24, heightMm: 40 },
+  ];
+  const ms = [meas('a', 24, 50), meas('t', 8, 90, { 8: [90, 1], 16: [45, 0.4] }), meas('b', 24, 40)];
+  const { result, override } = packWithNuggetVariants(items, ms, JOPTS);
+  assert.equal(override, null);
+  assert.ok(result.pages >= 3);
+});
+
+test('jointSpan: 换档不省页数（平手）→ 保持默认档不折腾', () => {
+  const items = [{ id: 't', span: 8, heightMm: 60 }];
+  const ms = [meas('t', 8, 60, { 8: [60, 1], 16: [30, 1] })];
+  const { override } = packWithNuggetVariants(items, ms, JOPTS);
+  assert.equal(override, null);
+});
+
+test('jointSpan: 真凶不是最高的疙瘩——高散文块占前排也轮得到表格（回归锁:候选曾只取前2漏掉真凶）', () => {
+  // d1/d2 是最高的疙瘩但没有可换的宽档;t 第三高,换 16 格才是省页的真凶
+  const items = [
+    { id: 'd1', span: 6, heightMm: 92 },
+    { id: 'd2', span: 6, heightMm: 91 },
+    { id: 'a', span: 24, heightMm: 50 },
+    { id: 't', span: 8, heightMm: 90 },
+    { id: 'b', span: 24, heightMm: 40 },
+  ];
+  const ms = [
+    meas('d1', 6, 92, { 6: [92, 1] }),
+    meas('d2', 6, 91, { 6: [91, 1] }),
+    meas('a', 24, 50),
+    meas('t', 8, 90, { 8: [90, 1], 16: [45, 1] }),
+    meas('b', 24, 40),
+  ];
+  const { result, override } = packWithNuggetVariants(items, ms, JOPTS);
+  assert.equal(override?.id, 't');
+  assert.equal(override?.span, 16);
+  assert.equal(result.pages, 3); // 默认 4 页,表格换 16 格后 3 页
+});
+
 test('stretch: 不同页/不重叠列的块互不限制', () => {
   const gaps = computeStretchGaps(
     [

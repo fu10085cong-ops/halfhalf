@@ -64,11 +64,18 @@ export async function applyAtomScaling(page: Page): Promise<void> {
     const atoms = Array.from(
       document.querySelectorAll<HTMLElement>('.hh-page table, .hh-page .katex-display')
     );
-    for (const el of atoms) {
+    // 第三类原子：**行内**公式（$...$）。它不参与 .katex-display 的缩放，又不能像文字换行，
+    // 长分式在窄柱里会横向溢出、被页边裁掉（真实判例：数据分析材料的皮尔逊公式整段
+    // 用行内写法，13pt/6 格下分母尾部被裁）。只在真溢出时缩放，短行内公式零影响。
+    const inlineKatex = Array.from(document.querySelectorAll<HTMLElement>('.hh-page .katex')).filter(
+      (el) => !el.closest('.katex-display')
+    );
+    for (const el of [...atoms, ...inlineKatex]) {
       el.style.transform = '';
       el.style.transformOrigin = '';
       el.style.marginBottom = '';
       el.style.width = '';
+      el.style.display = '';
       delete el.dataset.hhScale;
     }
     for (const el of atoms) {
@@ -91,6 +98,23 @@ export async function applyAtomScaling(page: Page): Promise<void> {
         el.dataset.hhScale = String(s);
       } else {
         el.style.width = '';
+      }
+    }
+    for (const el of inlineKatex) {
+      const container = el.closest<HTMLElement>('.hh-page');
+      if (!container) continue;
+      const contRect = container.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      // 行内元素从行中某处起排，可用宽度 = 容器内容右缘 − 公式左缘（不是整个容器宽）
+      const available = contRect.left + container.clientWidth - r.left;
+      if (r.width > available + 1) {
+        const s = Math.max(available / r.width, 0.1);
+        el.style.display = 'inline-block'; // transform 对非替换行内元素不生效
+        el.style.transform = `scale(${s})`;
+        el.style.transformOrigin = 'left center';
+        el.dataset.hhScale = String(s);
+        // 缩放系数进 data-hh-scale：测量侧会把它算进块的最小缩放（minScale 选档保护），
+        // 挤不下的行内公式会自然把块推向更宽的档，而不是缩到看不清
       }
     }
   });
