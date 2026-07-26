@@ -371,7 +371,7 @@ export default function ScenePanel() {
   return (
     <DocumentDropSurface onMarkdownImport={insertImportedMarkdown} onImageImport={insertImageFile}>
       {(uploadPanel) => (
-    <div style={{ display: 'flex', gap: 12, height: '100%', padding: 12, boxSizing: 'border-box' }}>
+    <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
       {/* 左：输入 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
         {/* ⓪ 材料转换：应急路径第一棒。BYOK key 填了就带上（花用户自己的钱），否则走服务器统一 key */}

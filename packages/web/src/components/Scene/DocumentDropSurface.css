@@ -1,6 +1,9 @@
 .hh-drop-surface {
   position: relative;
   flex: 1;
+  /* AppLayout 的 <main> 不是 flex 容器,flex:1 在其中失效——height:100% 兜底,
+     否则整个面板塌成内容高(合并判例:前端只剩上半部分) */
+  height: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
