@@ -110,8 +110,10 @@ export interface ContentStats {
  * 口径说明：
  * - formula 判别只看独立公式（$$..$$）——它才是刚性原子、需要"不缩宁升宽档"的保护；
  *   行内公式随文字换行，任何预设都排得好（random-topic 有 61 个行内公式仍是 balanced）。
- * - charCount 是剥掉公式/表格/Markdown 标记后的口径，比原始文件字数小得多
- *   （os-large 原文 ~3300 字符 → 剥后 ~1700），阈值按剥后口径定。
+ * - charCount 是剥掉公式/代码围栏/图片与链接 URL/Markdown 结构符后的口径，比原始
+ *   文件字数小得多（os-large 原文 ~3300 字符 → 剥后 ~1700），阈值按剥后口径定。
+ *   **表格单元格文本计入正文**——表格内容同样占版面，cram 判定衡量的就是"要排的字
+ *   有多少"（曾有注释误称"剥掉表格"，2026-07-26 站②诊断对账后更正：代码从未剥过）。
  */
 export const SCENE_THRESHOLDS = {
   /** visual：独立图片块 ≥ 此数，或图片块占比 ≥ visualImageRatio */
@@ -175,7 +177,14 @@ export function analyzeContent(blocks: ContentBlock[]): ContentStats {
     // 表格按分隔行计数（一张表恰好一行 |---|---|）
     tableCount += text.split('\n').filter(isTableDivider).length;
 
-    // 正文字数：去掉 Markdown 结构符号和空白
+    // 图片/链接的 URL 不是正文：换成 alt/链接文字再数。危害判例（站②诊断）：一张
+    // 行内 data URI 截图（非独立成行、不会被拆成图片块）把 ~20 字正文虚增成 4000+，
+    // cram(≥1500) 直接误触发
+    text = text
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+
+    // 正文字数：去掉 Markdown 结构符号和空白（表格单元格文本计入——表格也是要排的内容）
     charCount += text.replace(/[#*_>`|\-\s!\[\]()]/g, '').length;
   }
 

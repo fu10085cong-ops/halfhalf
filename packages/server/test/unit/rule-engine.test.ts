@@ -114,3 +114,13 @@ test('politics.md：纯文字材料无刚性原子', () => {
   assert.equal(s.codeBlockCount, 0);
   assert.equal(s.imageBlockCount, 0);
 });
+
+test('站②回归锁：图片/链接 URL 不计入正文字数（行内 data URI 不再虚增触发 cram）', () => {
+  const base64 = 'A'.repeat(4000);
+  const md = `## 一节\n\n正文只有这几个字。图:![截图](data:image/png;base64,${base64}) 后面还有一点。`;
+  const s = analyzeContent(chunkMarkdown(md));
+  assert.ok(s.charCount < 100, `URL 虚增未剥净: charCount=${s.charCount}`);
+  // alt/链接文字保留计数
+  const s2 = analyzeContent(chunkMarkdown('## 节\n\n看[参考资料手册](https://example.com/very/long/path)与 ![流程示意图](x.png) 两处。'));
+  assert.ok(s2.charCount >= 15 && s2.charCount < 40, `alt/链接文字应保留: ${s2.charCount}`);
+});
