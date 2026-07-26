@@ -4,7 +4,16 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chunkMarkdown } from '../../src/engine/chunk-markdown.js';
+import { chunkMarkdown, stripHtmlComments } from '../../src/engine/chunk-markdown.js';
+
+test('HTML 注释被剥掉(来源注释不进统计/渲染),围栏内的注释保留', () => {
+  const md = '# 标题\n\n<!-- 来源:xxx -->\n\n正文。\n\n```html\n<!-- 这是代码内容 -->\n```';
+  const stripped = stripHtmlComments(md);
+  assert.ok(!stripped.includes('来源:xxx'));
+  assert.ok(stripped.includes('<!-- 这是代码内容 -->'));
+  const blocks = chunkMarkdown(md);
+  assert.ok(blocks.every((b) => !b.markdown.includes('来源:xxx')));
+});
 
 /** 生成 n 段、每段约 120 字的无标题散文 */
 function plainParagraphs(n: number): string {
