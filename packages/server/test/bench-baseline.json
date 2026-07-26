@@ -12,7 +12,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": true,
-    "ms": 4673
+    "ms": 4668
   },
   "test.md": {
     "file": "test.md",
@@ -27,7 +27,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 3823
+    "ms": 3882
   },
   "data-analysis.md": {
     "file": "data-analysis.md",
@@ -42,22 +42,22 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1409
+    "ms": 1435
   },
   "cs-programming.md": {
     "file": "cs-programming.md",
     "scene": "code",
-    "fontSize": 14.5,
+    "fontSize": 15.5,
     "pages": 2,
     "within": true,
     "fills": [
-      81,
+      95,
       99
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1135
+    "ms": 1230
   },
   "os-large.md": {
     "file": "os-large.md",
@@ -72,21 +72,21 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1384
+    "ms": 1409
   },
   "code-heavy.md": {
     "file": "code-heavy.md",
     "scene": "code",
-    "fontSize": 10.5,
+    "fontSize": 11,
     "pages": 1,
     "within": true,
     "fills": [
-      90
+      89
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1270
+    "ms": 1300
   },
   "prob-band.md": {
     "file": "prob-band.md",
@@ -100,7 +100,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": true,
-    "ms": 2902
+    "ms": 2892
   },
   "network-tables.md": {
     "file": "network-tables.md",
@@ -114,7 +114,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 953
+    "ms": 971
   },
   "word-paste.md": {
     "file": "word-paste.md",
@@ -128,7 +128,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 872
+    "ms": 960
   },
   "history-long.md": {
     "file": "history-long.md",
@@ -143,36 +143,36 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 984
+    "ms": 1000
   },
   "java-oop.md": {
     "file": "java-oop.md",
     "scene": "code",
-    "fontSize": 8,
+    "fontSize": 9,
     "pages": 2,
     "within": true,
     "fills": [
-      95,
-      96
+      96,
+      95
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1192
+    "ms": 1191
   },
   "db-systems.md": {
     "file": "db-systems.md",
     "scene": "code",
-    "fontSize": 11,
+    "fontSize": 12.5,
     "pages": 2,
     "within": true,
     "fills": [
-      92,
-      94
+      91,
+      99
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1195
+    "ms": 1143
   }
 }

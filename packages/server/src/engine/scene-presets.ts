@@ -56,6 +56,8 @@ export const SCENE_PRESETS: Record<SceneId, ScenePreset> = {
     name: '代码密集',
     description: '编程课：代码块不折行（折行会破坏缩进语义），宽度优先给代码',
     density: 'normal',
+    // 代码框自带背景边界，块间不需要一整格呼吸（真材料 java-oop 判例，站⑨）
+    gutterMm: 4,
     maxAspect: 1.5,
     // 代码块是刚性原子，缩太狠就没法读；比公式略松（等宽字体在小字号下仍清晰）
     minScale: 0.75,

@@ -199,6 +199,7 @@ function deriveCore(
     sceneEquivalent = 'formula';
   } else if (codeHeavy) {
     maxAspect = 1.5;
+    gutterMm = 4; // 代码框自带背景边界，块间半格即可（真材料 java-oop 判例，站⑨）
     sceneEquivalent = 'code';
   } else if (imageHeavy) {
     sceneEquivalent = 'visual';
