@@ -92,7 +92,8 @@ test('jointSpan: 高大块换宽档后页数变少 → 采用并回报 override'
     { id: 'b', span: 24, heightMm: 40 },
   ];
   const ms = [meas('a', 24, 50), meas('t', 8, 90, { 8: [90, 1], 16: [45, 1] }), meas('b', 24, 40)];
-  const { result, override } = packWithNuggetVariants(items, ms, JOPTS);
+  const { result, overrides } = packWithNuggetVariants(items, ms, JOPTS);
+  const override = overrides[0] ?? null;
   assert.equal(result.pages, 2);
   assert.equal(override?.id, 't');
   assert.equal(override?.span, 16);
@@ -105,7 +106,8 @@ test('jointSpan: 变体 scale 低于 minScale（缩到不可读换宽档）不�
     { id: 'b', span: 24, heightMm: 40 },
   ];
   const ms = [meas('a', 24, 50), meas('t', 8, 90, { 8: [90, 1], 16: [45, 0.4] }), meas('b', 24, 40)];
-  const { result, override } = packWithNuggetVariants(items, ms, JOPTS);
+  const { result, overrides } = packWithNuggetVariants(items, ms, JOPTS);
+  const override = overrides[0] ?? null;
   assert.equal(override, null);
   assert.ok(result.pages >= 3);
 });
@@ -113,7 +115,8 @@ test('jointSpan: 变体 scale 低于 minScale（缩到不可读换宽档）不�
 test('jointSpan: 换档不省页数（平手）→ 保持默认档不折腾', () => {
   const items = [{ id: 't', span: 8, heightMm: 60 }];
   const ms = [meas('t', 8, 60, { 8: [60, 1], 16: [30, 1] })];
-  const { override } = packWithNuggetVariants(items, ms, JOPTS);
+  const { overrides } = packWithNuggetVariants(items, ms, JOPTS);
+  const override = overrides[0] ?? null;
   assert.equal(override, null);
 });
 
@@ -133,7 +136,8 @@ test('jointSpan: 真凶不是最高的疙瘩——高散文块占前排也轮得
     meas('t', 8, 90, { 8: [90, 1], 16: [45, 1] }),
     meas('b', 24, 40),
   ];
-  const { result, override } = packWithNuggetVariants(items, ms, JOPTS);
+  const { result, overrides } = packWithNuggetVariants(items, ms, JOPTS);
+  const override = overrides[0] ?? null;
   assert.equal(override?.id, 't');
   assert.equal(override?.span, 16);
   assert.equal(result.pages, 3); // 默认 4 页,表格换 16 格后 3 页
@@ -150,4 +154,42 @@ test('stretch: 不同页/不重叠列的块互不限制', () => {
     100
   );
   assert.equal(gaps.get('a'), 60); // 只受页底限制
+});
+
+// —— 深压缩救援（站⑤⑥）——
+
+test('深压缩救援: 缩放<0.75 的块升到"高度不增/更清晰"的宽档,页数不变差即采用;≥0.75 不动', () => {
+  // tbl 在 span6 缩到 0.55(网表判例),span12 更矮更清晰;ok 块 0.80 ≥0.75 不该被碰
+  const items = [
+    { id: 'a', span: 12, heightMm: 50 },
+    { id: 'tbl', span: 6, heightMm: 60 },
+    { id: 'ok', span: 6, heightMm: 40 },
+  ];
+  const ms = [
+    meas('a', 12, 50),
+    meas('tbl', 6, 60, { 6: [60, 0.55], 12: [55, 0.98] }),
+    meas('ok', 6, 40, { 6: [40, 0.8], 12: [35, 1.0] }),
+  ];
+  const { result, overrides } = packWithNuggetVariants(items, ms, JOPTS);
+  assert.equal(result.pages, 1);
+  assert.deepEqual(overrides.map((o) => ({ id: o.id, span: o.span })), [{ id: 'tbl', span: 12 }]);
+});
+
+test('深压缩救援: 升档会顶出新页时拒绝(密排材料的密度取舍不受伤)', () => {
+  // 三块并排恰好占满 24 格;tbl 升 12 格后横向塞不下、纵向也无处放 → 会开新页 → 拒绝
+  const items = [
+    { id: 'x', span: 12, heightMm: 95 },
+    { id: 'y', span: 6, heightMm: 95 },
+    { id: 'tbl', span: 6, heightMm: 95 },
+  ];
+  const ms = [
+    meas('x', 12, 95),
+    meas('y', 6, 95),
+    meas('tbl', 6, 95, { 6: [95, 0.5], 12: [90, 1.0] }),
+  ];
+  const { result, overrides } = packWithNuggetVariants(items, ms, JOPTS);
+  assert.equal(result.pages, 1, '保持单页');
+  assert.equal(overrides.length, 0, '救援被页数裁判否决');
+  const tbl = result.placements.find((p) => p.id === 'tbl')!;
+  assert.equal(tbl.span, 6, 'tbl 保持原档');
 });

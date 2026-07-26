@@ -6,13 +6,13 @@
     "pages": 2,
     "within": true,
     "fills": [
-      98,
+      99,
       99
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": true,
-    "ms": 4669
+    "ms": 9420
   },
   "test.md": {
     "file": "test.md",
@@ -27,7 +27,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 3975
+    "ms": 8232
   },
   "data-analysis.md": {
     "file": "data-analysis.md",
@@ -42,7 +42,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1459
+    "ms": 3003
   },
   "cs-programming.md": {
     "file": "cs-programming.md",
@@ -57,7 +57,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1180
+    "ms": 2007
   },
   "os-large.md": {
     "file": "os-large.md",
@@ -66,13 +66,13 @@
     "pages": 2,
     "within": true,
     "fills": [
-      89,
+      85,
       99
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1425
+    "ms": 2800
   },
   "code-heavy.md": {
     "file": "code-heavy.md",
@@ -86,7 +86,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1341
+    "ms": 2712
   },
   "prob-band.md": {
     "file": "prob-band.md",
@@ -100,7 +100,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": true,
-    "ms": 2987
+    "ms": 6340
   },
   "network-tables.md": {
     "file": "network-tables.md",
@@ -109,12 +109,12 @@
     "pages": 1,
     "within": true,
     "fills": [
-      75
+      80
     ],
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 973
+    "ms": 1957
   },
   "word-paste.md": {
     "file": "word-paste.md",
@@ -128,7 +128,7 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 991
+    "ms": 1794
   },
   "history-long.md": {
     "file": "history-long.md",
@@ -143,6 +143,6 @@
     "oversized": 0,
     "cramped": 0,
     "b1": false,
-    "ms": 1024
+    "ms": 2101
   }
 }

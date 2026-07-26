@@ -261,7 +261,7 @@ export function packWithNuggetVariants(
   }
 ): {
   result: ReturnType<typeof packBlocks>;
-  override: { id: string; span: number; heightPx: number; scale: number; formulaScale: number } | null;
+  overrides: { id: string; span: number; heightPx: number; scale: number; formulaScale: number }[];
 } {
   const base = packBlocks(items, opts.geo, opts.strategy, opts.pack);
   const byId = new Map(measurements.map((m) => [m.id, m]));
@@ -274,7 +274,8 @@ export function packWithNuggetVariants(
     .slice(0, 6);
 
   let best = base;
-  let override: ReturnType<typeof packWithNuggetVariants>['override'] = null;
+  let curItems = items;
+  const overrides: ReturnType<typeof packWithNuggetVariants>['overrides'] = [];
   for (const nug of nuggets) {
     const bySpan = byId.get(nug.id)!.bySpan!;
     for (const [spanStr, v] of Object.entries(bySpan)) {
@@ -285,11 +286,52 @@ export function packWithNuggetVariants(
       const res = packBlocks(variant, opts.geo, opts.strategy, opts.pack);
       if (res.pages < best.pages) {
         best = res;
-        override = { id: nug.id, span, heightPx: v.heightPx, scale: v.scale, formulaScale: v.formulaScale };
+        curItems = variant;
+        overrides.length = 0;
+        overrides.push({ id: nug.id, span, heightPx: v.heightPx, scale: v.scale, formulaScale: v.formulaScale });
       }
     }
   }
-  return { result: best, override };
+
+  // 深压缩救援（2026-07-26 站⑤⑥）：缩放跌破 0.75 舒适线的原子块（0.75 与 H3/H4
+  // 可读下限同源），若存在"高度不增、缩放更清晰"的更宽档，试着换上——**页数不变差
+  // 才采用**。判例：network-tables 端口表 span6=68mm 缩 0.55，而 span12=58mm 缩
+  // 0.98，页面还空着 25%——"够得着预设可读线就取最窄"两头输。密排材料（poli-econ）
+  // 升档会因面积膨胀顶出新页 → 这里自动被拒，密度取舍不受伤（曾在测量层做过同样的
+  // 救援，上下文盲，poli-econ/data-analysis 字号各掉 0.5~1pt，已回滚）。逐块贪心
+  // 链式采用，多个受害块（network-tables 有俩）都能救。
+  const rescueTargets = curItems
+    .map((i) => ({ item: i, m: byId.get(i.id) }))
+    .filter(({ item, m }) => {
+      const cur = m?.bySpan?.[item.span];
+      return cur !== undefined && cur.scale < 0.75;
+    });
+  for (const { item, m } of rescueTargets) {
+    const bySpan = m!.bySpan!;
+    const cur = bySpan[item.span];
+    // 支配性候选按 span 升序：宽度代价最小的先试（越宽越难塞回马赛克），
+    // 采纳第一个"页数不变差"的——0.98 和 1.00 的清晰度肉眼无差，塞得回去才是硬道理
+    const rescues = Object.entries(bySpan)
+      .map(([s, v]) => ({ span: Number(s), v }))
+      .filter(
+        ({ span, v }) =>
+          span > item.span && v.heightPx <= cur.heightPx + PX_PER_MM && v.scale > cur.scale + 0.02
+      )
+      .sort((a, z) => a.span - z.span);
+    for (const { span, v } of rescues) {
+      const hMm = v.heightPx / PX_PER_MM + opts.gutterMm;
+      const variant = curItems.map((i) => (i.id === item.id ? { ...i, span, heightMm: hMm } : i));
+      const res = packBlocks(variant, opts.geo, opts.strategy, opts.pack);
+      if (res.pages <= best.pages) {
+        best = res;
+        curItems = variant;
+        overrides.push({ id: item.id, span, heightPx: v.heightPx, scale: v.scale, formulaScale: v.formulaScale });
+        break;
+      }
+    }
+  }
+
+  return { result: best, overrides };
 }
 
 export async function searchGridFontSize(
@@ -349,7 +391,7 @@ export async function searchGridFontSize(
     let packResult: ReturnType<typeof packBlocks>;
     let effMeasurements = measurements;
     if (params.jointSpan !== false) {
-      const { result, override } = packWithNuggetVariants(items, measurements, {
+      const { result, overrides } = packWithNuggetVariants(items, measurements, {
         geo,
         gutterMm: grid.gutterMm,
         strategy: params.strategy,
@@ -357,19 +399,15 @@ export async function searchGridFontSize(
         minScale: params.minScale,
       });
       packResult = result;
-      if (override) {
-        // 换档生效：下游（渲染宽度/伸展/诊断）必须看到换档后的真实档位与高度
-        effMeasurements = measurements.map((m) =>
-          m.id === override.id
-            ? {
-                ...m,
-                span: override.span,
-                heightPx: override.heightPx,
-                scale: override.scale,
-                formulaScale: override.formulaScale,
-              }
-            : m
-        );
+      if (overrides.length > 0) {
+        // 换档/救援生效：下游（渲染宽度/伸展/诊断）必须看到换档后的真实档位与高度
+        const ovById = new Map(overrides.map((o) => [o.id, o]));
+        effMeasurements = measurements.map((m) => {
+          const o = ovById.get(m.id);
+          return o
+            ? { ...m, span: o.span, heightPx: o.heightPx, scale: o.scale, formulaScale: o.formulaScale }
+            : m;
+        });
       }
     } else {
       packResult = packBlocks(items, geo, params.strategy, packOpts);

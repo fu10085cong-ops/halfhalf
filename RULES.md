@@ -527,3 +527,15 @@ maxAspect；**阈值数字一个未动**（全部 ◐，校准只认真材料，
 ≥2 次才算证据（真术语必反复出现，双次线不伤召回），长别名一次即可。dump-features
 全量复核：仅 word-paste 的误建议消失，合法建议（os/semiconductor/calculus/politics）
 全保留。bench 与基线完全一致，回归锁已加（subject-rules.test.ts 站③）。
+
+**站⑤⑥ grid-layout + measure-blocks（联合发现：深压缩救援）**：从 bench 最难看的
+network-tables 75% 入手，bySpan 数据揭穿选档缺陷——端口表选 span6=68mm 缩 0.55，
+而 span12=58mm 缩 0.98，**更宽的档同时更矮更清晰**，"够得着预设可读线就取最窄"
+两头输。第一版在测量层做支配性升档翻车（上下文盲：cram 材料公式块 0.9 也被升宽，
+poli-econ/data-analysis 字号各掉 0.5~1pt，已回滚入账）；定稿在**拼装层**挂进
+packWithNuggetVariants：缩放 <0.75 的块（与 H3/H4 可读下限同源）按 span 升序试
+"高度不增、更清晰"的宽档，**页数不变差才采用**——密排材料升档顶出新页自动被拒。
+bench：network-tables 75→80（端口/IP 表恢复全尺寸，目检确认）、poli-econ +1、
+os-large 页1 −4pp 换两张表 0.60→0.81/0.50→0.75（16.5pt 下约 9pt→12pt 有效字号，
+字号页数均未动）。override 契约升级为 overrides 数组（救援可多块链式）。
+回归锁 2 例（grid-search.test.ts 站⑤⑥），基线已更新。
