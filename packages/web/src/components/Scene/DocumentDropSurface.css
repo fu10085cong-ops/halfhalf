@@ -1,0 +1,182 @@
+.hh-drop-surface {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 8px;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.hh-drop-surface.is-dragging {
+  background: #eef2ff;
+  box-shadow: 0 0 0 2px #6366f1;
+}
+
+.hh-drop-guide {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  color: #3730a3;
+  background: linear-gradient(90deg, #eef2ff, #f8fafc);
+  border: 1px dashed #a5b4fc;
+  border-radius: 7px;
+}
+
+.hh-drop-guide > span:nth-child(2) {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hh-drop-guide small {
+  color: #64748b;
+  line-height: 1.3;
+}
+
+.hh-drop-guide button {
+  flex: none;
+  padding: 5px 10px;
+  color: #3730a3;
+  background: #fff;
+  border: 1px solid #a5b4fc;
+  border-radius: 5px;
+  font-weight: 600;
+}
+
+.hh-drop-icon {
+  display: grid;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: #fff;
+  background: #4f46e5;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.hh-attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 6px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.hh-attachment {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #dbe3ef;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.hh-attachment.is-processing {
+  border-color: #a5b4fc;
+}
+
+.hh-attachment.is-error {
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+
+.hh-file-type {
+  display: grid;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: #4338ca;
+  background: #eef2ff;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.hh-attachment.is-error .hh-file-type {
+  color: #b91c1c;
+  background: #fee2e2;
+  font-size: 16px;
+}
+
+.hh-file-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hh-file-copy b,
+.hh-file-copy small,
+.hh-file-copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hh-file-copy small {
+  color: #64748b;
+}
+
+.hh-file-copy em {
+  color: #b91c1c;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.hh-file-copy .hh-file-warning {
+  color: #a16207;
+}
+
+.hh-dismiss-file {
+  flex: none;
+  padding: 0 3px;
+  color: #94a3b8;
+  background: transparent;
+  border: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.hh-drop-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hh-drop-overlay {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  color: #312e81;
+  background: rgb(238 242 255 / 94%);
+  border: 2px dashed #6366f1;
+  border-radius: 8px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.hh-drop-overlay b {
+  font-size: 22px;
+}
+
+.hh-drop-overlay span {
+  color: #6366f1;
+}

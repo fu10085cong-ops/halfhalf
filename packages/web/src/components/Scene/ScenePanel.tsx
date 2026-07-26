@@ -1,14 +1,67 @@
 /**
  * 场景排版面板（网格引擎）：无装饰、全功能。
- * - Markdown 纯 textarea；截图直接 Ctrl/Cmd+V 粘贴或点按钮上传，自动转 data URI 插入光标处
+ * - Markdown 纯 textarea；图片显示短附件引用，data URI 留在页面内存、生成时再还原
  * - 场景默认"自动推荐"，结果里显示推荐理由，用户可改选后重排
  * - 结果：内容统计 / 推荐场景 / 字号页数 / 各类警告 / PDF 内嵌预览 + 下载
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SceneId, SceneResult, BlockSuggestion, AiCompressResponse, AiCompressSummary } from '../../types';
+import DocumentDropSurface from './DocumentDropSurface';
+import {
+  compactInlineImages,
+  expandImageAttachments,
+  fileToImageAttachment,
+} from './imageAttachments';
 
 /** BYOK 配置存本地浏览器（localStorage），不上传服务器；key 也只在本机 */
-const AI_KEYS = { endpoint: 'hh.ai.endpoint', model: 'hh.ai.model', key: 'hh.ai.key' } as const;
+const AI_KEYS = {
+  provider: 'hh.ai.provider',
+  model: 'hh.ai.model',
+  keyPrefix: 'hh.ai.key',
+} as const;
+
+const AI_PROVIDERS = {
+  deepseek: {
+    label: 'DeepSeek',
+    endpoint: 'https://api.deepseek.com/chat/completions',
+    models: [
+      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash（推荐）' },
+      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+    ],
+  },
+  qwen: {
+    label: '阿里云百炼（通义千问）',
+    endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    models: [
+      { value: 'qwen3.7-plus', label: 'Qwen 3.7 Plus（推荐）' },
+      { value: 'qwen3.7-max', label: 'Qwen 3.7 Max' },
+      { value: 'qwen3.6-flash', label: 'Qwen 3.6 Flash' },
+    ],
+  },
+  zhipu: {
+    label: '智谱 AI（GLM）',
+    endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    models: [
+      { value: 'glm-5.2', label: 'GLM-5.2（推荐）' },
+      { value: 'glm-5', label: 'GLM-5' },
+    ],
+  },
+  minimax: {
+    label: 'MiniMax',
+    endpoint: 'https://api.minimaxi.com/v1/chat/completions',
+    models: [
+      { value: 'MiniMax-M2.7', label: 'MiniMax M2.7（推荐）' },
+      { value: 'MiniMax-M2.7-highspeed', label: 'MiniMax M2.7 极速版' },
+      { value: 'MiniMax-M2.5', label: 'MiniMax M2.5' },
+    ],
+  },
+} as const;
+
+type AiProviderId = keyof typeof AI_PROVIDERS;
+
+function isAiProviderId(value: string): value is AiProviderId {
+  return value in AI_PROVIDERS;
+}
 const lsGet = (k: string, fallback: string) => {
   try {
     return localStorage.getItem(k) ?? fallback;
@@ -80,25 +133,13 @@ $$
 
 ## 三、图片
 
-截图后直接在文本框里 Ctrl/Cmd+V 粘贴，或点「插入图片」按钮。
+截图可直接拖进左侧区域，或在文本框里 Ctrl/Cmd+V 粘贴。
 `;
 
-function insertAtCursor(el: HTMLTextAreaElement, text: string): string {
-  const start = el.selectionStart ?? el.value.length;
-  const end = el.selectionEnd ?? el.value.length;
-  return el.value.slice(0, start) + text + el.value.slice(end);
-}
-
-function fileToMarkdownImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(`\n![截图](${reader.result as string})\n`);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function ScenePanel() {
+  const [imageSources, setImageSources] = useState<Record<string, string>>({});
+  const imageSourcesRef = useRef<Record<string, string>>({});
   const [markdown, setMarkdown] = useState(DEFAULT_MD);
   const [targetPages, setTargetPages] = useState(1);
   const [scene, setScene] = useState<SceneId | 'auto'>('auto');
@@ -111,15 +152,23 @@ export default function ScenePanel() {
   const [result, setResult] = useState<SceneResult | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // —— AI 语义精简（BYOK）——
   const [showAi, setShowAi] = useState(false);
-  const [aiEndpoint, setAiEndpoint] = useState(() =>
-    lsGet(AI_KEYS.endpoint, 'https://api.openai.com/v1/chat/completions')
+  const [aiProviderId, setAiProviderId] = useState<AiProviderId>(() => {
+    const stored = lsGet(AI_KEYS.provider, 'deepseek');
+    return isAiProviderId(stored) ? stored : 'deepseek';
+  });
+  const aiProvider = AI_PROVIDERS[aiProviderId];
+  const [aiModel, setAiModel] = useState(() => {
+    const stored = lsGet(AI_KEYS.model, '');
+    return aiProvider.models.some((model) => model.value === stored)
+      ? stored
+      : aiProvider.models[0].value;
+  });
+  const [aiKey, setAiKey] = useState(() =>
+    lsGet(`${AI_KEYS.keyPrefix}.${aiProviderId}`, lsGet(AI_KEYS.keyPrefix, ''))
   );
-  const [aiModel, setAiModel] = useState(() => lsGet(AI_KEYS.model, 'gpt-4o-mini'));
-  const [aiKey, setAiKey] = useState(() => lsGet(AI_KEYS.key, ''));
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BlockSuggestion[]>([]);
@@ -129,10 +178,59 @@ export default function ScenePanel() {
   const [compressSource, setCompressSource] = useState('');
 
   const insertImageFile = async (file: File) => {
-    const snippet = await fileToMarkdownImage(file);
-    const el = textareaRef.current;
-    setMarkdown(el ? insertAtCursor(el, snippet) : markdown + snippet);
+    const { attachment } = await fileToImageAttachment(file);
+    imageSourcesRef.current[attachment.id] = attachment.dataUri;
+    setImageSources((current) => ({ ...current, [attachment.id]: attachment.dataUri }));
   };
+
+  const insertImportedMarkdown = (incoming: string) => {
+    const compacted = compactInlineImages(incoming);
+    if (compacted.attachments.length > 0) {
+      for (const attachment of compacted.attachments) {
+        imageSourcesRef.current[attachment.id] = attachment.dataUri;
+      }
+      setImageSources((current) => {
+        const next = { ...current };
+        for (const attachment of compacted.attachments) {
+          next[attachment.id] = attachment.dataUri;
+        }
+        return next;
+      });
+    }
+    setMarkdown((current) =>
+      current === DEFAULT_MD || !current.trim()
+        ? compacted.markdown
+        : `${current.trim()}\n\n---\n\n${compacted.markdown}`
+    );
+    setResult(null);
+    setError(null);
+    setSuggestions([]);
+    setAccepted({});
+    setAiSummary(null);
+    setCompressSource('');
+
+    if (pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(null);
+    }
+  };
+
+  // 兼容旧会话或用户手工粘贴的 data URI：自动缩成短引用，不让几万字符淹没编辑框。
+  useEffect(() => {
+    const compacted = compactInlineImages(markdown);
+    if (compacted.attachments.length === 0) return;
+    for (const attachment of compacted.attachments) {
+      imageSourcesRef.current[attachment.id] = attachment.dataUri;
+    }
+    setImageSources((current) => {
+      const next = { ...current };
+      for (const attachment of compacted.attachments) {
+        next[attachment.id] = attachment.dataUri;
+      }
+      return next;
+    });
+    setMarkdown(compacted.markdown);
+  }, [markdown]);
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'));
@@ -147,11 +245,19 @@ export default function ScenePanel() {
     setError(null);
     setResult(null);
     try {
+      const currentImages = { ...imageSourcesRef.current, ...imageSources };
+      const hiddenImages = Object.entries(currentImages)
+        .filter(([id]) => !markdown.includes(`halfhalf-image://${id}`))
+        .map(([, dataUri]) => `![](${dataUri})`)
+        .join('\n\n');
+      const renderMarkdown = [expandImageAttachments(markdown, currentImages), hiddenImages]
+        .filter(Boolean)
+        .join('\n\n');
       const resp = await fetch('/api/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          markdown,
+          markdown: renderMarkdown,
           targetPages,
           scene,
           orientation,
@@ -195,7 +301,7 @@ export default function ScenePanel() {
         body: JSON.stringify({
           markdown: snapshot,
           provider: {
-            endpoint: aiEndpoint,
+            endpoint: aiProvider.endpoint,
             model: aiModel,
             headers: { Authorization: `Bearer ${aiKey}` },
           },
@@ -258,7 +364,12 @@ export default function ScenePanel() {
   return (
     <div style={{ display: 'flex', gap: 12, height: '100%', padding: 12, boxSizing: 'border-box' }}>
       {/* 左：输入 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+      <DocumentDropSurface
+        onMarkdownImport={insertImportedMarkdown}
+        onImageImport={insertImageFile}
+      >
+        {(uploadPanel) => (
+          <>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label>
             目标页数
@@ -329,20 +440,34 @@ export default function ScenePanel() {
             />
             允许乱序换密度
           </label>
-          <button onClick={() => fileInputRef.current?.click()}>插入图片</button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              if (f) await insertImageFile(f);
-              e.target.value = '';
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            padding: '10px 0',
+            borderBottom: '1px solid #e2e8f0',
+          }}
+        >
+          <button
+            onClick={run}
+            disabled={busy}
+            style={{
+              padding: '10px 24px',
+              border: 0,
+              borderRadius: 7,
+              background: busy ? '#94a3b8' : '#4f46e5',
+              color: '#fff',
+              fontSize: 16,
+              fontWeight: 700,
+              cursor: busy ? 'wait' : 'pointer',
+              boxShadow: '0 3px 10px rgba(79, 70, 229, 0.28)',
             }}
-          />
-          <button onClick={run} disabled={busy} style={{ fontWeight: 'bold' }}>
-            {busy ? '排版中…' : '生成 PDF'}
+          >
+            {busy ? '正在排版…' : '📄 生成并预览 PDF'}
           </button>
           <button
             onClick={runCompress}
@@ -351,7 +476,7 @@ export default function ScenePanel() {
           >
             {aiBusy ? 'AI 精简中…' : '✨ AI 精简'}
           </button>
-          <button onClick={() => setShowAi((v) => !v)} title="配置 AI 服务商端点 / 模型 / API Key（存本地浏览器）">
+          <button onClick={() => setShowAi((v) => !v)} title="选择 AI 厂家、模型并填写 API Key">
             AI 设置 {showAi ? '▴' : '▾'}
           </button>
         </div>
@@ -371,30 +496,44 @@ export default function ScenePanel() {
             }}
           >
             <label>
-              端点
-              <input
-                type="text"
-                value={aiEndpoint}
+              厂家
+              <select
+                value={aiProviderId}
                 onChange={(e) => {
-                  setAiEndpoint(e.target.value);
-                  lsSet(AI_KEYS.endpoint, e.target.value);
+                  const nextId = e.target.value as AiProviderId;
+                  const nextProvider = AI_PROVIDERS[nextId];
+                  const nextModel = nextProvider.models[0].value;
+                  setAiProviderId(nextId);
+                  setAiModel(nextModel);
+                  setAiKey(lsGet(`${AI_KEYS.keyPrefix}.${nextId}`, ''));
+                  lsSet(AI_KEYS.provider, nextId);
+                  lsSet(AI_KEYS.model, nextModel);
                 }}
-                style={{ marginLeft: 4, width: 320 }}
-                placeholder="https://api.openai.com/v1/chat/completions"
-              />
+                style={{ marginLeft: 4, minWidth: 180 }}
+              >
+                {Object.entries(AI_PROVIDERS).map(([id, provider]) => (
+                  <option key={id} value={id}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               模型
-              <input
-                type="text"
+              <select
                 value={aiModel}
                 onChange={(e) => {
                   setAiModel(e.target.value);
                   lsSet(AI_KEYS.model, e.target.value);
                 }}
-                style={{ marginLeft: 4, width: 140 }}
-                placeholder="gpt-4o-mini"
-              />
+                style={{ marginLeft: 4, minWidth: 210 }}
+              >
+                {aiProvider.models.map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               API Key
@@ -403,14 +542,14 @@ export default function ScenePanel() {
                 value={aiKey}
                 onChange={(e) => {
                   setAiKey(e.target.value);
-                  lsSet(AI_KEYS.key, e.target.value);
+                  lsSet(`${AI_KEYS.keyPrefix}.${aiProviderId}`, e.target.value);
                 }}
                 style={{ marginLeft: 4, width: 220 }}
                 placeholder="sk-..."
               />
             </label>
             <span style={{ color: '#64748b' }}>
-              仅 OpenAI 兼容格式；key 存本地浏览器，只在请求内存里过后端，不落服务器
+              接口地址已预设；API Key 按厂家分别保存在本地浏览器，不落服务器
             </span>
           </div>
         )}
@@ -491,6 +630,8 @@ export default function ScenePanel() {
           </div>
         )}
 
+        {uploadPanel}
+
         <textarea
           ref={textareaRef}
           value={markdown}
@@ -551,7 +692,9 @@ export default function ScenePanel() {
             ))}
           </div>
         )}
-      </div>
+          </>
+        )}
+      </DocumentDropSurface>
 
       {/* 右：PDF 预览 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>

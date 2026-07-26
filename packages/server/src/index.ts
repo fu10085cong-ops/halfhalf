@@ -6,6 +6,7 @@ import { optimizeRouter } from './routes/optimize.js';
 import { exportRouter } from './routes/export.js';
 import { aiRouter } from './routes/ai.js';
 import { sceneRouter } from './routes/scene.js';
+import { documentUploadRouter } from './routes/document-upload.js';
 import { closeSharedBrowser } from './engine/browser-pool.js';
 
 const app: express.Express = express();
@@ -21,6 +22,7 @@ app.use('/api', optimizeRouter);
 app.use('/api', exportRouter);
 app.use('/api', aiRouter);
 app.use('/api', sceneRouter);
+app.use('/api', documentUploadRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

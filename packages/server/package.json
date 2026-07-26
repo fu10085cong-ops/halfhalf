@@ -8,7 +8,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json && cp -r src/templates dist/templates",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/templates','dist/templates',{recursive:true})\"",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
@@ -16,21 +16,28 @@
     "test:fixture": "tsx test/run-fixture.ts"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.21.0",
+    "katex": "^0.16.11",
+    "mammoth": "^1.12.0",
     "markdown-it": "^14.1.0",
     "markdown-it-katex": "^2.0.3",
-    "katex": "^0.16.11",
-    "shiki": "^1.24.0",
     "mermaid": "^11.4.0",
+    "multer": "^2.2.0",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
     "playwright": "^1.45.0",
-    "cors": "^2.8.5"
+    "shiki": "^1.24.0",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/markdown-it": "^14.1.2",
-    "@types/cors": "^2.8.17",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.14.0",
+    "@types/turndown": "^5.0.6",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }

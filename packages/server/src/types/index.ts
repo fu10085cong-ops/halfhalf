@@ -211,3 +211,25 @@ export interface AiCompressResponse {
   suggestions: BlockSuggestion[];
   summary: AiCompressSummary;
 }
+
+/** POST /api/import/document 的导入结果。 */
+export type ImportedDocumentKind = 'docx' | 'pdf';
+
+export interface DocumentImportSummary {
+  kind: ImportedDocumentKind;
+  originalName: string;
+  sizeBytes: number;
+  characterCount: number;
+  paragraphCount: number;
+  headingCount: number;
+  tableCount: number;
+  imageCount: number;
+  pageCount?: number;
+  textPageCount?: number;
+  warnings: string[];
+}
+
+export interface ImportedDocument {
+  markdown: string;
+  summary: DocumentImportSummary;
+}

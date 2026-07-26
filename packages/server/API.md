@@ -4,7 +4,7 @@
 本文档只是把它翻译成带示例的说明——如果两者不一致，以代码为准。
 
 - Base URL：本地开发默认 `http://localhost:3000`
-- 所有请求/响应 body 都是 `application/json`，除了 `/api/optimize`（SSE）和 PDF 下载（二进制流）
+- 除 `/api/import/document` 使用 `multipart/form-data`、`/api/optimize` 使用 SSE、PDF 下载返回二进制外，其余请求/响应 body 都是 `application/json`
 - 当前没有鉴权机制，所有接口公开可访问
 - 时间字段（`timestamp`）统一是 `Date.now()` 的毫秒时间戳
 
@@ -18,6 +18,8 @@
 ```ts
 interface ApiErrorResponse {
   error: string;
+  code?: string;
+  details?: Record<string, unknown>;
 }
 ```
 
@@ -32,6 +34,38 @@ interface ApiErrorResponse {
 ```json
 { "status": "ok", "timestamp": "2026-07-10T08:00:00.000Z" }
 ```
+
+---
+
+## `POST /api/import/document`
+
+把 Word 或 PDF 转成可编辑 Markdown。请求必须是 `multipart/form-data`，文件字段名为 `file`；只在内存中处理，不写入服务器磁盘。
+
+- 支持 `.docx` 和文字型 `.pdf`，单文件最大 20 MB、PDF 最大 300 页。
+- `.doc` 返回 `415 UNSUPPORTED_FILE`；扫描/图片型 PDF 返回 `422 OCR_REQUIRED`，不会返回空白成功。
+
+### 响应 `200`
+
+```ts
+{
+  markdown: string;
+  summary: {
+    kind: 'docx' | 'pdf';
+    originalName: string;
+    sizeBytes: number;
+    characterCount: number;
+    paragraphCount: number;
+    headingCount: number;
+    tableCount: number;
+    imageCount: number;
+    pageCount?: number;
+    textPageCount?: number;
+    warnings: string[];
+  };
+}
+```
+
+常见错误码：`FILE_TOO_LARGE`、`INVALID_DOCX`、`INVALID_PDF`、`PASSWORD_PROTECTED`、`TOO_MANY_PAGES`、`OCR_REQUIRED`。检测信息（例如扫描件页数）放在可选的 `details` 中。
 
 ---
 
