@@ -24,7 +24,7 @@ export const STRUCTURIZE_SYSTEM_PROMPT = `你是 HalfHalf 的材料结构化助�
 格式规范：
 1. 用一个 # 总标题、若干 ## 分节；每个 ## 节的正文不超过 800 字，内容多就多分几节（可用 ### 细分）。
 2. 数学公式一律用 $...$（行内）或 $$...$$（独立成行）的 LaTeX，不用 Unicode 上下标拼公式。
-3. 表格用 GFM 管道表格；代码用 \`\`\` 围栏并标语言。
+3. 表格一律用 GFM 管道表格（| 表头 | … |，第二行 |---|---|）。输入里"空格对齐 + 虚线行"的伪表格（Word/Pandoc 转换的常见产物）、用空格或制表符对齐的"名称 含义"键值行，都必须转成管道表格——它们不转的话在排版里会塌成一团文字。代码用 \`\`\` 围栏并标语言。
 4. 保真红线：原文里的公式、数字、定义、结论一个不丢、一个不改；删掉的只能是与知识无关的噪音（页眉页脚、"如下图所示"、乱码、重复内容）。
 5. 只输出 Markdown 正文本身：不要解释你做了什么，不要把整个文档包进代码围栏。
 
@@ -55,6 +55,16 @@ export async function checkStructure(markdown: string): Promise<StructurizeCheck
     const example = giants[0].title || giants[0].id;
     problems.push(
       `有 ${giants.length} 个超过 ${GIANT_BLOCK_CHARS} 字仍无法细分的巨型段落（如「${example}」）——每个 ## 节控制在 800 字内，内容多就多分节`
+    );
+  }
+  // Pandoc 伪表格残留（≥2 段虚线用空格隔开的分隔行，如 "------ ----------"）：
+  // markdown-it 不认它，排版时整张表塌成一团文字（真材料 db-systems 判例——
+  // 20+ 张表全灭）。围栏内的横线是代码内容，先摘掉再扫。
+  const noFence = markdown.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, '');
+  const pandocDividers = noFence.split('\n').filter((l) => /^\s*-{3,}(\s+-{3,})+\s*$/.test(l));
+  if (pandocDividers.length > 0) {
+    problems.push(
+      `有 ${pandocDividers.length} 处"空格对齐 + 虚线"的伪表格（Pandoc/Word 转换残留）——必须转成 GFM 管道表格（| 列 | 列 |，第二行 |---|---|），否则排版时会塌成一团文字`
     );
   }
   const formulaIssues = await precheckFormulas(blocks);

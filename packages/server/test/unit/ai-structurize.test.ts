@@ -162,3 +162,18 @@ test('structurize: 修正轮仍不过 → 照常返回且 check.ok=false（让�
   assert.equal(result.check.ok, false);
   assert.equal(result.markdown, bad2);
 });
+
+test('checkStructure: Pandoc 伪表格分隔行被抓(真材料 db-systems 判例);GFM 表格与围栏内横线不误报', async () => {
+  const pandoc = `# 数据库\n\n## 概念\n\n  名称                   含义\n  ---------------------- ------------------------------------\n  数据(Data)             描述客观事物的符号记录\n`;
+  const bad = await checkStructure(pandoc);
+  assert.equal(bad.ok, false);
+  assert.ok(bad.problems.some((p) => p.includes('伪表格')), JSON.stringify(bad.problems));
+
+  const gfm = `# 数据库\n\n## 概念\n\n| 名称 | 含义 |\n|---|---|\n| 数据 | 符号记录 |\n`;
+  const good = await checkStructure(gfm);
+  assert.ok(!good.problems.some((p) => p.includes('伪表格')));
+
+  const fenced = '# 代码\n\n## 示例\n\n```text\n------ ------\n```\n正文。';
+  const code = await checkStructure(fenced);
+  assert.ok(!code.problems.some((p) => p.includes('伪表格')), '围栏内横线是代码内容');
+});
