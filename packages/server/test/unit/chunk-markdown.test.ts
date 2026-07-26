@@ -58,9 +58,25 @@ test('围栏内的空行不算段落分界', () => {
 test('带标题的超长叶子节不受兜底影响（既有判例基线不动）', () => {
   const longLeaf = `# 总标题\n\n## 唯一一节\n\n${plainParagraphs(20)}`;
   const blocks = chunkMarkdown(longLeaf);
-  // ## 节没有更深层标题：尽管超长，仍保持"标题块"整体，不做段落细分
-  assert.equal(blocks.length, 1);
+  // H1 标题独立成迷你卡（调优站①）；## 节没有更深层标题：尽管超长，仍保持整体不做段落细分
+  assert.equal(blocks.length, 2);
   assert.equal(blocks[0].title, '总标题');
+  assert.equal(blocks[1].title, '唯一一节');
+});
+
+test('调优站①：H1 文档标题独立成块（填缝自由度），##+ 空章头仍并入下一块', () => {
+  // H1 独立：cs-programming 判例——标题并进首节造出 133mm 巨块，拆出后基准字号
+  // 13.5→14.5pt、页1 填充 75→81（bench 2026-07-26）
+  const h1 = chunkMarkdown(`# 文档标题\n\n## 一\n\n正文。`);
+  assert.deepEqual(
+    h1.map((b) => b.title),
+    ['文档标题', '一']
+  );
+  assert.equal(h1[0].markdown.trim(), '# 文档标题', 'H1 标题自成迷你块');
+  // ## 空章头仍并入（「## 第X部分」下面直接是「### x.1」的一行字迷你卡浪费版面）
+  const h2 = chunkMarkdown(`## 第一部分\n\n### 1.1\n\n${'正文。'.repeat(300)}\n\n### 1.2\n\n正文。`);
+  const part = h2.find((b) => b.title === '第一部分');
+  assert.ok(part && part.markdown.includes('### 1.1'), '## 空章头并入其后内容');
 });
 
 test('结构良好的材料切块行为不变（标题切分 + 前言块）', () => {
