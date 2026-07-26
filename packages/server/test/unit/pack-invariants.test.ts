@@ -18,11 +18,19 @@ function rnd(seed: number) {
 }
 
 function randomBlocks(r: () => number, n: number): PackInput[] {
-  return Array.from({ length: n }, (_, i) => ({
-    id: `b${i}`,
-    heightMm: 8 + r() * (r() < 0.06 ? 220 : 150), // 少量超高块
-    span: TIERS[Math.floor(r() * TIERS.length)],
-  }));
+  return Array.from({ length: n }, (_, i) => {
+    const span = TIERS[Math.floor(r() * TIERS.length)];
+    const heightMm = 8 + r() * (r() < 0.06 ? 220 : 150); // 少量超高块
+    // 约半数块带备选窄档（洞驱动降档的输入）：窄一档 → 高一截，模拟真实 bySpan
+    const alts = TIERS.filter((t) => t < span);
+    const altSpans =
+      alts.length > 0 && r() < 0.5
+        ? alts
+            .map((t) => ({ span: t, heightMm: heightMm * (span / t) * (0.8 + 0.4 * r()) }))
+            .sort((a, z) => z.span - a.span)
+        : undefined;
+    return { id: `b${i}`, heightMm, span, altSpans };
+  });
 }
 
 type Rect = { column: number; span: number; yMm: number; h: number; id: string };
@@ -50,9 +58,20 @@ test('随机压测 60 组：无丢块/无重叠/不超页高/前缀性质/补丁
       assert.equal(ids.length, blocks.length, `seed${seed} ${name}: 落位数`);
       assert.equal(new Set(ids).size, blocks.length, `seed${seed} ${name}: 无重复落位`);
 
+      // 降档块的有效高度 = 声明过的备选档高度；降档必须落在声明档上且与落位一致
+      const effHeights = new Map(heights);
+      for (const rt of res.retiered) {
+        const b = blocks.find((x) => x.id === rt.id)!;
+        const alt = b.altSpans?.find((a) => a.span === rt.span);
+        assert.ok(alt, `seed${seed} ${name}: ${rt.id} 降到未声明的档 ${rt.span}`);
+        const pl = res.placements.find((p) => p.id === rt.id)!;
+        assert.equal(pl.span, rt.span, `seed${seed} ${name}: ${rt.id} 落位档与降档记录不一致`);
+        effHeights.set(rt.id, alt!.heightMm);
+      }
+
       const byPage = new Map<number, Rect[]>();
       for (const p of res.placements) {
-        const h = heights.get(p.id)!;
+        const h = effHeights.get(p.id)!;
         if (h <= geo.columnHeightMm) {
           assert.ok(
             p.yMm + h <= geo.columnHeightMm + 1e-6,
@@ -117,4 +136,48 @@ test('backfill：开新页后，后续窄块回填旧页缺口（老行为则跟
   const pageOf = (r: typeof bf, id: string) => r.placements.find((p) => p.id === id)!.page;
   assert.equal(pageOf(noBf, 'filler'), 1, '老行为: filler 跟去第 2 页');
   assert.equal(pageOf(bf, 'filler'), 0, 'backfill: filler 回填第 1 页');
+});
+
+test('repack 阅读序优先：标题保持页首、顺序不被高度序打散（cs 材料页 0 判例）', () => {
+  // 真实判例（cs-programming 13.5pt 页 0 缩影，页高 277）：leftmost-first-fit 把
+  // title、二 竖着堆进左列 → 16 格的 三 卡住 → 老 repack 只试高度序，把 三 排到
+  // 标题前面（标题沉到页中）。阅读序 + best-fit 本可全装下且标题留在 (0,0)。
+  const tallGeo: PackGeometry = { columnHeightMm: 277, columnsPerPage: 24, gapMm: 0 };
+  const blocks: PackInput[] = [
+    { id: 'title', heightMm: 133, span: 12 },
+    { id: 'sec2', heightMm: 87, span: 12 },
+    { id: 'sec3', heightMm: 139, span: 16 },
+  ];
+  const res = packBlocks(blocks, tallGeo, 'column-flow', { repack: true });
+  assert.equal(res.pages, 1);
+  const at = (id: string) => res.placements.find((p) => p.id === id)!;
+  assert.deepEqual({ column: at('title').column, yMm: at('title').yMm }, { column: 0, yMm: 0 }, '标题钉在页首');
+  assert.deepEqual({ column: at('sec2').column, yMm: at('sec2').yMm }, { column: 12, yMm: 0 }, '二 平行铺右列');
+  assert.deepEqual({ column: at('sec3').column, yMm: at('sec3').yMm }, { column: 0, yMm: 133 }, '三 落标题下方');
+});
+
+test('洞驱动降档：原档装不下且换位无解时，降到备选窄档塞进本页缺口而不是开新页', () => {
+  // A(16格,120) 后 C(8格,60) 被 leftmost 堆进左列（120+60=180 恰好占满）；
+  // B 按 12 格任何窗口都与 A/C 重叠超页高，repack 也无解——
+  // 但降到 8 格能塞进右侧 8 列的空缺（cols16-24 全空）。
+  const blocks: PackInput[] = [
+    { id: 'A', heightMm: 120, span: 16 },
+    { id: 'C', heightMm: 60, span: 8 },
+    { id: 'B', heightMm: 70, span: 12, altSpans: [{ span: 8, heightMm: 100 }] },
+  ];
+  const res = packBlocks(blocks, geo, 'column-flow', { repack: true });
+  assert.equal(res.pages, 1, '降档后全部塞进一页');
+  assert.deepEqual(res.retiered, [{ id: 'B', span: 8 }]);
+  const b = res.placements.find((p) => p.id === 'B')!;
+  assert.equal(b.span, 8);
+  assert.equal(b.column, 16, 'B 落进右侧 8 列空缺');
+  assert.equal(b.yMm, 0);
+  // 不带备选档 = 老行为：B 去第 2 页
+  const noAlt = packBlocks(
+    blocks.map((x) => ({ ...x, altSpans: undefined })),
+    geo,
+    'column-flow',
+    { repack: true }
+  );
+  assert.equal(noAlt.pages, 2, '无备选档则开新页（老行为可复现）');
 });

@@ -61,8 +61,10 @@ export function uniquifyMermaidIds(html: string, prefix: string): string {
  */
 export async function applyAtomScaling(page: Page): Promise<void> {
   await page.evaluate(() => {
+    // 第四类原子：代码块（pre）。white-space: pre 禁折行（折行毁缩进/注释语义，H4），
+    // 超宽走与表格同一条"放开到内容宽 → 整体缩放"的路。
     const atoms = Array.from(
-      document.querySelectorAll<HTMLElement>('.hh-page table, .hh-page .katex-display')
+      document.querySelectorAll<HTMLElement>('.hh-page table, .hh-page .katex-display, .hh-page pre')
     );
     // 第三类原子：**行内**公式（$...$）。它不参与 .katex-display 的缩放，又不能像文字换行，
     // 长分式在窄柱里会横向溢出、被页边裁掉（真实判例：数据分析材料的皮尔逊公式整段
@@ -75,8 +77,32 @@ export async function applyAtomScaling(page: Page): Promise<void> {
       el.style.transformOrigin = '';
       el.style.marginBottom = '';
       el.style.width = '';
+      el.style.maxWidth = '';
+      el.style.whiteSpace = '';
       el.style.display = '';
       delete el.dataset.hhScale;
+    }
+    // 紧凑表 nowrap 探针（在通用缩放之前）：单元格全是短词条的"速查表"，CJK 会在
+    // 容器变窄时先竖折（"不稳"折成两行）而永远不触发溢出，表格原子保护形同虚设
+    // （真实判例：cs 材料复杂度速查表 12 格下被挤成竖条）。给它禁折行量出自然宽：
+    // 装得下 → 保持 nowrap（零成本告别竖折）；略超宽（缩放 ≥0.75 可救）→ 保持
+    // nowrap 交给下面的通用缩放；太宽 → 退回折行渲染，但把"假想缩放"记进
+    // data-hh-scale 让选档避开这个档往宽档推。单元格像句子的散文表不碰——折行是对的。
+    for (const el of atoms) {
+      if (el.tagName !== 'TABLE') continue;
+      const container = el.closest<HTMLElement>('.hh-page');
+      if (!container) continue;
+      const cells = Array.from(el.querySelectorAll('th, td'));
+      const compact =
+        cells.length > 0 && cells.every((c) => (c.textContent ?? '').trim().length <= 16);
+      if (!compact) continue;
+      el.style.whiteSpace = 'nowrap';
+      const cw = container.clientWidth;
+      const naturalW = el.getBoundingClientRect().width;
+      if (naturalW > cw + 1 && cw / naturalW < 0.75) {
+        el.style.whiteSpace = '';
+        el.dataset.hhScale = String(cw / naturalW);
+      }
     }
     for (const el of atoms) {
       const container = el.closest<HTMLElement>('.hh-page');
@@ -84,9 +110,11 @@ export async function applyAtomScaling(page: Page): Promise<void> {
       const cw = container.clientWidth;
       // 表格超宽表现为盒子本身比容器宽，缩放盒子即可；公式（overflow-x:auto）超宽发生在
       // 盒子内部——纸上没有滚动条，超出部分会被直接裁掉，缩放外盒子救不回已裁内容。
-      // 所以先把盒子放开到内容宽（消除内部裁剪），再统一按“盒子比容器宽”缩放。
+      // 所以先把盒子放开到内容宽（消除内部裁剪；pre 有 max-width:100%，一并放开），
+      // 再统一按“盒子比容器宽”缩放。
       if (el.scrollWidth > el.clientWidth + 1) {
         el.style.width = 'max-content';
+        el.style.maxWidth = 'none';
       }
       const naturalW = el.getBoundingClientRect().width;
       if (naturalW > cw + 1) {
@@ -98,6 +126,7 @@ export async function applyAtomScaling(page: Page): Promise<void> {
         el.dataset.hhScale = String(s);
       } else {
         el.style.width = '';
+        el.style.maxWidth = '';
       }
     }
     for (const el of inlineKatex) {

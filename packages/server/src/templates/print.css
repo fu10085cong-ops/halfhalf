@@ -87,9 +87,11 @@ pre {
   max-width: 100%;
   padding: 0.6em 0.8em;
   border-radius: 4px;
-  overflow-wrap: break-word;
-  white-space: pre-wrap;
-  word-break: break-word;
+  /* 代码是排版原子：折行毁缩进/注释语义（H4 的本意）。真实判例：cs 材料 13.5pt/12 格
+     下快排的 `i = lo - 1;` 折出孤行 `1;`、if 体内的 swap 折行后顶格看似循环外语句、
+     行尾注释折行后残句看似代码。禁折行；超宽由 applyAtomScaling 整体等比缩小
+     （data-hh-scale → 块 scale → minScale 选档保护），与表格/公式同一套机制。 */
+  white-space: pre;
 }
 
 pre.hh-code-fallback {

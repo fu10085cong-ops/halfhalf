@@ -101,11 +101,22 @@ export interface GridSearchParams {
   /** 满版伸展的字号上限增量 pt，默认 2（太大则相邻块字号差异扎眼） */
   stretchCapPt?: number;
   /**
+   * **末页**块的伸展上限增量 pt，默认 4。末页天然半空（内容量对不齐整页的量化余数），
+   * 且下方多为页底空白而非邻块——字号差异的顾虑小、可回收的空隙大，给它更高的顶。
+   */
+  stretchLastCapPt?: number;
+  /**
    * 硬疙瘩联合选档（默认开）：拼装时给"高过内容区 45% 的高大块"试更宽的档
    * （变矮好塞），页数严格变少才采用。治"大表格把 2 页顶成 3 页"的悬崖。
    * 关掉即回"每块先选档、拼装不商量"的老行为。
    */
   jointSpan?: boolean;
+  /**
+   * 洞驱动降档（默认开）：块按原档装不下当前页、页内换位也救不回时，试更窄的档
+   * （可读性 scale ≥ minScale 的档才算数）塞进本页剩余缺口，而不是开新页留死洞。
+   * 联合选档的对偶（那个升档救页数，这个降档填洞）。关掉即回老行为。
+   */
+  holeFill?: boolean;
 }
 
 export interface GridTrial {
@@ -337,6 +348,19 @@ export async function searchGridFontSize(
       id: m.id,
       heightMm: m.heightPx / PX_PER_MM + grid.gutterMm,
       span: m.span,
+      // 洞驱动降档的备选窄档：可读性达标（scale ≥ minScale）且不超页高的更窄档位，
+      // span 降序（优先降得最少）。数据是测量白送的 bySpan，零额外开销。
+      altSpans: params.holeFill !== false && m.bySpan
+        ? Object.entries(m.bySpan)
+            .map(([s, v]) => ({
+              span: Number(s),
+              heightMm: v.heightPx / PX_PER_MM + grid.gutterMm,
+              scale: v.scale,
+            }))
+            .filter((a) => a.span < m.span && a.scale >= params.minScale && a.heightMm <= contentHMm)
+            .sort((a, z) => z.span - a.span)
+            .map(({ span, heightMm }) => ({ span, heightMm }))
+        : undefined,
     }));
     const packOpts = { repack: params.repack, backfill: params.backfill };
     let packResult: ReturnType<typeof packBlocks>;
@@ -366,6 +390,18 @@ export async function searchGridFontSize(
       }
     } else {
       packResult = packBlocks(items, geo, params.strategy, packOpts);
+    }
+    // 洞驱动降档生效：落位档与测量选档不同的块，把测量数据同步成实际档位
+    // （渲染宽度/伸展/诊断都要看到降档后的真实高度与缩放）
+    if (packResult.retiered.length > 0) {
+      const retierBySpan = new Map(packResult.retiered.map((r) => [r.id, r.span]));
+      effMeasurements = effMeasurements.map((m) => {
+        const span = retierBySpan.get(m.id);
+        const v = span !== undefined ? m.bySpan?.[span] : undefined;
+        return v
+          ? { ...m, span: span!, heightPx: v.heightPx, scale: v.scale, formulaScale: v.formulaScale }
+          : m;
+      });
     }
     return {
       fontSize,
@@ -424,6 +460,60 @@ export async function searchGridFontSize(
     }
   }
 
+  // —— 末页拉宽重排：末页是量化余数的倾倒场，16/12 混档常留整列死柱（真实判例：
+  // cs 材料末页 五@16+六@12，右侧 8 格从头空到底，填充率 35%）。末页明显半空时，
+  // 把末页文字块统一升到通栏档（bySpan 白送的数据，scale 须达标），按阅读序纵向
+  // 堆叠，剩余高度均摊成块间呼吸位——每块正下方都有了自己的空隙，随后的满版伸展
+  // 能逐块把它换成更大的字。只动末页、多页结果才动（单页结果 = 全文，不该整版重写）。
+  if (params.stretchFill !== false && best.pages > 1) {
+    const lastPage = best.pages - 1;
+    const lastPls = best.placements.filter((p) => p.page === lastPage);
+    const mById = new Map(best.measurements.map((m) => [m.id, m]));
+    const pageAreaMm2 = grid.unitsX * grid.unitMm * contentHMm;
+    const fillMm2 = lastPls.reduce((acc, p) => {
+      const m = mById.get(p.id);
+      return acc + (m ? p.span * grid.unitMm * (m.heightPx / PX_PER_MM + grid.gutterMm) : 0);
+    }, 0);
+    if (lastPls.length > 0 && fillMm2 / pageAreaMm2 < 0.6) {
+      const orderIdx = new Map(blocks.map((b, i) => [b.id, i]));
+      const stack = [...lastPls].sort((a, b) => (orderIdx.get(a.id) ?? 0) - (orderIdx.get(b.id) ?? 0));
+      const widened: { id: string; hMm: number; m: BlockMeasurement }[] = [];
+      let totalH = 0;
+      let ok = true;
+      for (const pl of stack) {
+        const m = mById.get(pl.id);
+        const v =
+          m?.span === grid.unitsX ? m : m?.bySpan?.[grid.unitsX];
+        if (!m || !v || v.scale < params.minScale) {
+          ok = false; // 图片块（无 bySpan）或通栏下不可读：整页放弃，保持原版面
+          break;
+        }
+        const hMm = v.heightPx / PX_PER_MM + grid.gutterMm;
+        widened.push({ id: pl.id, hMm, m });
+        totalH += hMm;
+      }
+      if (ok && totalH <= contentHMm) {
+        const spacing = (contentHMm - totalH) / widened.length;
+        let y = 0;
+        const newPls = new Map<string, Placement>();
+        for (const w of widened) {
+          newPls.set(w.id, { id: w.id, page: lastPage, column: 0, span: grid.unitsX, yMm: y });
+          y += w.hMm + spacing;
+        }
+        best = {
+          ...best,
+          placements: best.placements.map((p) => newPls.get(p.id) ?? p),
+          measurements: best.measurements.map((m) => {
+            const w = newPls.has(m.id) ? m.bySpan?.[grid.unitsX] : undefined;
+            return w && m.span !== grid.unitsX
+              ? { ...m, span: grid.unitsX, heightPx: w.heightPx, scale: w.scale, formulaScale: w.formulaScale }
+              : m;
+          }),
+        };
+      }
+    }
+  }
+
   // —— 满版伸展：定稿后逐块把字号向上多试几步，填掉各自正下方的空隙。
   // 只在最终结果上跑一次（每步一轮测量），不进二分循环；页数/搜索结果不受影响。
   if (params.stretchFill !== false) {
@@ -434,9 +524,13 @@ export async function searchGridFontSize(
     const gaps = computeStretchGaps(best.placements, boxH, contentHMm);
     if (gaps.size > 0) {
       const capPt = params.stretchCapPt ?? 2;
+      // 末页专属更高的顶：末页是量化余数的倾倒场（内容 1.6 页 → 第 2 页天然只有六成），
+      // 块下方多是页底空白而非邻块，字号差异不扎眼、空隙又大，值得多爬几步
+      const lastCapPt = Math.max(capPt, params.stretchLastCapPt ?? 4);
+      const lastPage = best.pages - 1;
       const imageIds = new Set(blocks.filter((b) => b.kind === 'image').map((b) => b.id));
       const placeById = new Map(best.placements.map((p) => [p.id, p]));
-      for (let step = 0.5; step <= capPt + 1e-9; step += 0.5) {
+      for (let step = 0.5; step <= lastCapPt + 1e-9; step += 0.5) {
         const ms = await measureBlocks(blocks, {
           candidates,
           fontSize: best.fontSize + step,
@@ -450,11 +544,16 @@ export async function searchGridFontSize(
           const gap = gaps.get(m.id);
           if (gap === undefined) continue;
           const pl = placeById.get(m.id);
-          // 大字号下选档变了 → 高度不在同一宽度下，不可比，该步放弃
-          if (!pl || m.span !== pl.span) continue;
-          const newBox = m.heightPx / PX_PER_MM + grid.gutterMm;
+          if (!pl) continue;
+          if (step > (pl.page === lastPage ? lastCapPt : capPt) + 1e-9) continue;
+          // 高度必须取"落位档"下的：大字号下选档可能漂走，但降档/换档/拉宽过的块
+          // 落位档是定死的——bySpan 里有该档在这个字号下的高度（可读性也要复查：
+          // 字号越大代码/表格在同宽下缩得越狠，scale 掉出下限就到顶了）
+          const v = m.span === pl.span ? m : m.bySpan?.[pl.span];
+          if (!v || v.scale < (params.minScale ?? 0)) continue;
+          const newBox = v.heightPx / PX_PER_MM + grid.gutterMm;
           if (newBox <= (boxH.get(m.id) ?? 0) + gap) {
-            stretched[m.id] = { fontSize: best.fontSize + step, heightPx: m.heightPx };
+            stretched[m.id] = { fontSize: best.fontSize + step, heightPx: v.heightPx };
           }
         }
       }
