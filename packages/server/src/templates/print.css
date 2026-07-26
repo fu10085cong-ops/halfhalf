@@ -96,8 +96,15 @@ pre {
   white-space: pre;
 }
 
+/* 代码框统一浅灰底（GitHub 风格 #f6f8fa，打印友好）：Shiki github-light 主题在
+   pre 上写的是**内联白底**，代码框和纸面融成一体不突出（真材料 java-oop 用户反馈，
+   站⑨）——内联样式只有 !important 压得过。排除 mermaid 错误框（红底是它的语义）。
+   背景不参与布局，测量/页数零影响。 */
+pre:not(.hh-mermaid-error) {
+  background-color: #f6f8fa !important;
+}
+
 pre.hh-code-fallback {
-  background: #f5f5f5;
   border: 1px solid #e0e0e0;
 }
 
