@@ -12,7 +12,9 @@
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "test": "tsx --test test/unit/*.test.ts"  },
+    "test": "tsx --test test/unit/*.test.ts",
+    "bench": "tsx test/run-bench.ts"
+  },
   "dependencies": {
     "express": "^4.21.0",
     "markdown-it": "^14.1.0",
