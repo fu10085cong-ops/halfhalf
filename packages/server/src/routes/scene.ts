@@ -91,7 +91,7 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
     return;
   }
 
-  const targetPages = body.targetPages ?? 1;
+  const targetPages = body.targetPages ?? 2;
   const orientation = body.orientation ?? 'portrait';
   const margins =
     body.marginMm !== undefined
@@ -102,9 +102,10 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
   try {
     const blocks = chunkMarkdown(body.markdown);
     const stats = analyzeContent(blocks);
+    const strictSourceOrder = /<!--\s*halfhalf:source-order=strict\s*-->/.test(body.markdown);
     const subject = body.subject ? SUBJECT_RULES[body.subject] : undefined;
     const staticDerived = deriveLayoutParams(stats, {
-      allowReorder: body.allowReorder === true,
+      allowReorder: !strictSourceOrder && body.allowReorder === true,
       subject,
     });
 
@@ -118,6 +119,8 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
       orientation,
       margins,
       stretchFill: body.stretchFill !== false,
+      repack: strictSourceOrder ? false : undefined,
+      monotonicOrder: strictSourceOrder,
     };
 
     // 自动模式用规则引擎的交集参数（多类刚性原子同时保护），模糊带内双跑实测裁决（B1）；
@@ -138,7 +141,8 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
         maxAspect: preset.maxAspect,
         gutterMm: preset.gutterMm,
         widthTiers: preset.widthTiers ? [...preset.widthTiers] : undefined,
-        backfill: body.allowReorder === true,
+        repack: strictSourceOrder ? false : undefined,
+        backfill: !strictSourceOrder && body.allowReorder === true,
       });
     }
     const usedScene: SceneId = auto ? derived.sceneEquivalent : (body.scene as SceneId);

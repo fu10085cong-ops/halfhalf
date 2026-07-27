@@ -2,7 +2,15 @@ import mammoth from 'mammoth';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { createHash } from 'node:crypto';
 import type { ImportedDocument } from '../types/index.js';
+import {
+  buildKnowledgeDocument,
+  coalesceNativeBlocks,
+  sanitizeExtractedText,
+  type NativeSourceBlock,
+} from './knowledge-ir.js';
+import { renderPdfVisualAssets } from './pdf-visual-renderer.js';
 
 export class DocumentImportError extends Error {
   constructor(
@@ -13,6 +21,26 @@ export class DocumentImportError extends Error {
   ) {
     super(message);
     this.name = 'DocumentImportError';
+  }
+}
+
+/** 异步导入任务的阶段进度；同步端点不传 onProgress 时全部为空操作。 */
+export interface DocumentImportProgress {
+  progress: number;
+  stage: 'extracting' | 'rendering' | 'finalizing';
+  message: string;
+}
+
+export interface DocumentImportOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: DocumentImportProgress) => void;
+}
+
+function throwIfImportAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const error = new Error('Import cancelled.');
+    error.name = 'AbortError';
+    throw error;
   }
 }
 
@@ -76,7 +104,8 @@ function promoteFirstTableRows(html: string): string {
 export async function importDocx(
   buffer: Buffer,
   originalName: string,
-  sizeBytes: number
+  sizeBytes: number,
+  options: DocumentImportOptions = {}
 ): Promise<ImportedDocument> {
   if (buffer.length < 4 || buffer.subarray(0, 2).toString('ascii') !== 'PK') {
     throw new DocumentImportError(
@@ -86,6 +115,8 @@ export async function importDocx(
     );
   }
 
+  throwIfImportAborted(options.signal);
+  options.onProgress?.({ progress: 20, stage: 'extracting', message: '正在读取 Word 结构…' });
   const result = await mammoth.convertToHtml(
     { buffer },
     {
@@ -98,6 +129,8 @@ export async function importDocx(
     }
   );
 
+  throwIfImportAborted(options.signal);
+  options.onProgress?.({ progress: 90, stage: 'finalizing', message: '正在生成可编辑文档…' });
   const turndown = createTurndown();
   const semanticHtml = promoteFirstTableRows(result.value);
   const markdown = normalizeMarkdown(turndown.turndown(semanticHtml));
@@ -157,23 +190,53 @@ function isPdfTextItem(item: unknown): item is PdfTextItem {
   );
 }
 
-function joinPdfTextItems(items: PdfTextItem[]): string {
-  const lines: string[] = [];
+/**
+ * 按行聚合 PDF 文本项，并记录归一化 bbox——KnowledgeIR 的页锚点靠它，
+ * 页面视觉保真也靠它判断哪些区域该回退成原图。
+ */
+function extractPdfBlocks(
+  items: PdfTextItem[],
+  page: number,
+  pageWidth: number,
+  pageHeight: number
+): NativeSourceBlock[] {
+  const blocks: NativeSourceBlock[] = [];
   let line = '';
   let previousY: number | null = null;
   let previousEndX: number | null = null;
   let previousHeight = 10;
   let forceNewLine = false;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
 
   const flush = () => {
     const clean = line.replace(/[ \t]+/g, ' ').trim();
-    if (clean) lines.push(clean);
+    if (clean && Number.isFinite(minX) && Number.isFinite(minY)) {
+      blocks.push({
+        id: `p${page}-b${blocks.length + 1}`,
+        page,
+        text: clean,
+        bbox: [
+          minX / pageWidth,
+          (pageHeight - maxY) / pageHeight,
+          maxX / pageWidth,
+          (pageHeight - minY) / pageHeight,
+        ],
+        fontHeight: previousHeight,
+      });
+    }
     line = '';
     previousEndX = null;
+    minX = Infinity;
+    minY = Infinity;
+    maxX = -Infinity;
+    maxY = -Infinity;
   };
 
   for (const item of items) {
-    if (!item.str) {
+    if (!item.str.trim()) {
       if (item.hasEOL) forceNewLine = true;
       continue;
     }
@@ -181,6 +244,7 @@ function joinPdfTextItems(items: PdfTextItem[]): string {
     const x = Number(item.transform[4]) || 0;
     const y = Number(item.transform[5]) || 0;
     const height = Math.abs(item.height || item.transform[3] || 10);
+    const width = Math.max(0, item.width || 0);
     const changedLine =
       previousY !== null &&
       (forceNewLine ||
@@ -196,13 +260,17 @@ function joinPdfTextItems(items: PdfTextItem[]): string {
     }
 
     line += item.str;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width);
+    maxY = Math.max(maxY, y + height);
     previousY = y;
     previousHeight = height;
-    previousEndX = x + Math.max(0, item.width || 0);
+    previousEndX = x + width;
     forceNewLine = item.hasEOL;
   }
   flush();
-  return lines.join('\n');
+  return blocks;
 }
 
 function escapePdfMarkdown(line: string): string {
@@ -210,10 +278,192 @@ function escapePdfMarkdown(line: string): string {
   return line;
 }
 
+/**
+ * 通用质量策略：异常页稀疏时只对那几页做原图保真，其余保持可编辑；
+ * 异常页密集时整篇切视觉模式，避免巨大原生文字和幻灯片图混排。
+ * 这是按可测页面质量决策，不看文件名、学科或页数。
+ */
+export function selectPdfVisualPages(
+  pages: Array<{ page: number; route: 'native' | 'hybrid' | 'ocr' }>,
+  pageCount: number
+): number[] {
+  const fallback = pages
+    .filter((page) => page.route !== 'native')
+    .map((page) => page.page);
+  if (fallback.length === 0) return [];
+
+  const denseVisualDocument = fallback.length >= 3 && fallback.length / pageCount >= 0.4;
+  return denseVisualDocument
+    ? Array.from({ length: pageCount }, (_, index) => index + 1)
+    : fallback;
+}
+
+type LoadedPdfDocument = Awaited<ReturnType<typeof getDocument>['promise']>;
+
+async function importPdfDocumentWithVisuals(
+  document: LoadedPdfDocument,
+  buffer: Buffer,
+  originalName: string,
+  sizeBytes: number,
+  options: DocumentImportOptions
+): Promise<ImportedDocument> {
+  const sourceBlocks: NativeSourceBlock[] = [];
+  const blocksByPage = new Map<number, NativeSourceBlock[]>();
+  let textPageCount = 0;
+
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    throwIfImportAborted(options.signal);
+    const content = await page.getTextContent();
+    const textItems = content.items.reduce<PdfTextItem[]>((items, item) => {
+      if (isPdfTextItem(item)) items.push(item);
+      return items;
+    }, []);
+    const viewport = page.getViewport({ scale: 1 });
+    const pageBlocks = coalesceNativeBlocks(
+      extractPdfBlocks(textItems, pageNumber, viewport.width, viewport.height)
+    );
+    blocksByPage.set(pageNumber, pageBlocks);
+    sourceBlocks.push(...pageBlocks);
+    if (pageBlocks.some((block) => countCharacters(block.text) > 0)) textPageCount += 1;
+    page.cleanup();
+    options.onProgress?.({
+      progress: 10 + Math.round((pageNumber / document.numPages) * 50),
+      stage: 'extracting',
+      message: `正在分析第 ${pageNumber}/${document.numPages} 页…`,
+    });
+  }
+
+  const fileHash = createHash('sha256').update(buffer).digest('hex');
+  const knowledge = buildKnowledgeDocument({
+    fileHash,
+    pageCount: document.numPages,
+    blocks: sourceBlocks,
+  });
+  const nativeCharacterCount = sourceBlocks.reduce(
+    (sum, block) => sum + countCharacters(block.text),
+    0
+  );
+  const minimumUsefulText = Math.max(20, document.numPages * 6);
+  if (textPageCount === 0 || nativeCharacterCount < minimumUsefulText) {
+    throw new DocumentImportError(
+      'OCR_REQUIRED',
+      '这份 PDF 几乎没有可复制文字，判断为扫描件或图片型 PDF，需要 OCR 才能变成可编辑内容。',
+      422,
+      {
+        pageCount: document.numPages,
+        textPageCount,
+        characterCount: nativeCharacterCount,
+      }
+    );
+  }
+
+  const qualityPages = knowledge.quality?.pages ?? [];
+  const fallbackPageNumbers = qualityPages
+    .filter((page) => page.route !== 'native')
+    .map((page) => page.page);
+  const visualPageNumbers = selectPdfVisualPages(qualityPages, document.numPages);
+  const denseVisualMode =
+    visualPageNumbers.length === document.numPages &&
+    fallbackPageNumbers.length < document.numPages;
+  options.onProgress?.({
+    progress: 65,
+    stage: 'rendering',
+    message: '正在保真渲染公式和图表…',
+  });
+  throwIfImportAborted(options.signal);
+  let visualAssets: Awaited<ReturnType<typeof renderPdfVisualAssets>> = [];
+  try {
+    visualAssets = await renderPdfVisualAssets(
+      buffer,
+      visualPageNumbers.map((page) => ({ id: `source-page-${page}`, page })),
+      { scale: 1.35, quality: 72, signal: options.signal }
+    );
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new DocumentImportError(
+      'PDF_VISUAL_RENDER_FAILED',
+      '检测到公式字体损坏，但原页图像保真 Worker 未能完成。已停止生成不完整 PDF。',
+      503,
+      { detail, visualPageNumbers, fallbackPageNumbers }
+    );
+  }
+
+  const visualByPage = new Map(visualAssets.map((asset) => [asset.page, asset]));
+  throwIfImportAborted(options.signal);
+  options.onProgress?.({
+    progress: 90,
+    stage: 'finalizing',
+    message: '正在组装可追溯内容…',
+  });
+  const pages: string[] = ['<!-- halfhalf:source-order=strict -->'];
+  let paragraphCount = 0;
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const pageBlocks = blocksByPage.get(pageNumber) ?? [];
+    const visual = visualByPage.get(pageNumber);
+    if (visual) {
+      pages.push(`## 第 ${pageNumber} 页\n\n![HH_SOURCE_PAGE_${pageNumber}](${visual.dataUri})`);
+      paragraphCount += 1;
+      continue;
+    }
+
+    const pageText = pageBlocks
+      .map((block) => sanitizeExtractedText(block.text))
+      .filter(Boolean)
+      .map(escapePdfMarkdown)
+      .join('\n');
+    if (!pageText) continue;
+    pages.push(`## 第 ${pageNumber} 页\n\n${pageText}`);
+    paragraphCount += pageText.split(/\n{2,}/).filter((part) => part.trim()).length;
+  }
+
+  const markdown = normalizeMarkdown(pages.join('\n\n'));
+  const characterCount = sourceBlocks.reduce(
+    (sum, block) => sum + countCharacters(block.text.replace(/[\uE000-\uF8FF\uFFFD\u25A1]/gu, '')),
+    0
+  );
+  const blankPages = document.numPages - textPageCount;
+  const warnings = [
+    ...(blankPages > 0 ? [`${blankPages} 页没有提取到文字，已保留原页图像。`] : []),
+    ...(knowledge.quality?.hybridPageCount
+      ? [
+          `${knowledge.quality.hybridPageCount} 页含旧式公式/符号字体，已改用原页图像保真，不再输出重复占位符。`,
+        ]
+      : []),
+    ...(knowledge.quality?.ocrPageCount
+      ? [`${knowledge.quality.ocrPageCount} 页已保留原图，后续可在 OCR 完成后替换为可编辑节点。`]
+      : []),
+    denseVisualMode
+      ? '异常页占比较高，版面层统一按原页保真；可编辑文字仍保留在知识节点层。'
+      : '只对异常页使用原图保真；其余可信文字保持可编辑。',
+    '每页已加入页码标题，方便发现漏页并追溯原文件。',
+  ];
+
+  return {
+    markdown,
+    summary: {
+      kind: 'pdf',
+      originalName,
+      sizeBytes,
+      characterCount,
+      paragraphCount,
+      headingCount: document.numPages,
+      tableCount: 0,
+      imageCount: visualAssets.length,
+      pageCount: document.numPages,
+      textPageCount,
+      quality: knowledge.quality,
+      warnings,
+    },
+    knowledge,
+  };
+}
+
 export async function importTextPdf(
   buffer: Buffer,
   originalName: string,
-  sizeBytes: number
+  sizeBytes: number,
+  options: DocumentImportOptions = {}
 ): Promise<ImportedDocument> {
   if (buffer.length < 5 || buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
     throw new DocumentImportError('INVALID_PDF', '这个文件不是有效的 PDF。', 400);
@@ -236,74 +486,7 @@ export async function importTextPdf(
       );
     }
 
-    const pages: string[] = [];
-    let textPageCount = 0;
-    let paragraphCount = 0;
-
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-      const page = await document.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const textItems = content.items.reduce<PdfTextItem[]>((items, item) => {
-        if (isPdfTextItem(item)) items.push(item);
-        return items;
-      }, []);
-      const pageText = joinPdfTextItems(textItems);
-      page.cleanup();
-
-      if (countCharacters(pageText) > 0) {
-        textPageCount += 1;
-        paragraphCount += pageText.split(/\n{2,}/).filter((part) => part.trim()).length;
-        pages.push(
-          `## 第 ${pageNumber} 页\n\n${pageText
-            .split('\n')
-            .map(escapePdfMarkdown)
-            .join('\n')}`
-        );
-      }
-    }
-
-    const markdown = normalizeMarkdown(pages.join('\n\n'));
-    const characterCount = countCharacters(markdown.replace(/^## 第 \d+ 页$/gm, ''));
-    const minimumUsefulText = Math.max(20, document.numPages * 6);
-
-    if (characterCount < minimumUsefulText) {
-      throw new DocumentImportError(
-        'OCR_REQUIRED',
-        '这份 PDF 几乎没有可复制文字，判断为扫描件或图片型 PDF，需要 OCR 才能变成可编辑内容。',
-        422,
-        {
-          pageCount: document.numPages,
-          textPageCount,
-          characterCount,
-        }
-      );
-    }
-
-    const blankPages = document.numPages - textPageCount;
-    const warnings = [
-      ...(blankPages > 0
-        ? [`${blankPages} 页没有提取到文字，可能是封面、空白页或扫描图片。`]
-        : []),
-      'PDF 只提取可复制文字；复杂表格、分栏、公式和图片的位置可能需要导入后核对。',
-      '每页已加入页码标题，方便发现漏页并追溯原文件。',
-    ];
-
-    return {
-      markdown,
-      summary: {
-        kind: 'pdf',
-        originalName,
-        sizeBytes,
-        characterCount,
-        paragraphCount,
-        headingCount: document.numPages,
-        tableCount: 0,
-        imageCount: 0,
-        pageCount: document.numPages,
-        textPageCount,
-        warnings,
-      },
-    };
+    return await importPdfDocumentWithVisuals(document, buffer, originalName, sizeBytes, options);
   } catch (error) {
     if (error instanceof DocumentImportError) throw error;
     const message = error instanceof Error ? error.message : String(error);

@@ -10,6 +10,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import type { Density } from '../types/index.js';
 import { DENSITY_CONFIG } from '../types/index.js';
 import { withPage } from './browser-pool.js';
@@ -166,7 +167,7 @@ ${containers.join('\n')}
 
   try {
     return await withPage(async (page) => {
-      await page.goto(`file://${tempFilePath}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(pathToFileURL(tempFilePath).href, { waitUntil: 'domcontentloaded' });
       await renderMermaidDiagrams(page);
       // 图片解码完成后才有正确的布局高度/naturalWidth（base64 图通常同步就绪，这里兜底）
       await page.evaluate(() =>
@@ -209,6 +210,22 @@ ${containers.join('\n')}
       const results: BlockMeasurement[] = [];
       for (const b of blocks) {
         const cands = raw.filter((r) => r.id === b.id).sort((a, z) => a.span - z.span);
+
+        if (/!\[HH_SOURCE_PAGE_\d+\]/.test(b.markdown)) {
+          // A source slide is already a dense visual document. Half-page width keeps
+          // formulas sharp while allowing a 2-column contact-sheet layout.
+          const halfSpan = Math.ceil(cands[cands.length - 1].span / 2);
+          const chosen = cands.find((candidate) => candidate.span >= halfSpan) ?? cands[cands.length - 1];
+          results.push({
+            id: b.id,
+            span: chosen.span,
+            heightPx: chosen.heightPx,
+            scale: 1,
+            formulaScale: 1,
+            belowMinScale: false,
+          });
+          continue;
+        }
 
         if (b.kind === 'image') {
           // 图片块：吸附到能按原尺寸放下的最小宽度档位；全都放不下则取最大档，

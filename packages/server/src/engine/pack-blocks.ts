@@ -59,6 +59,11 @@ export interface PackOptions {
   repack?: boolean;
   /** 跨页回填（见文件头注释）。默认 false——顺序刚性弱（S2）才该开 */
   backfill?: boolean;
+  /**
+   * Keep placement anchors monotonically left-to-right within a page.
+   * This prevents later source blocks from jumping back into an earlier column hole.
+   */
+  monotonicOrder?: boolean;
 }
 
 export interface PackResult {
@@ -109,15 +114,18 @@ export function packBlocks(
   const clampSpan = (s: number) => Math.max(1, Math.min(s, geo.columnsPerPage));
 
   if (strategy === 'column-flow') {
-    const repack = opts.repack ?? true;
-    const backfill = opts.backfill ?? false;
+    const monotonicOrder = opts.monotonicOrder ?? false;
+    const repack = monotonicOrder ? false : opts.repack ?? true;
+    const backfill = monotonicOrder ? false : opts.backfill ?? false;
     /** 每页已放的块（含钳过的 span），repack 重排时要整页重来 */
     const pageMembers: { id: string; heightMm: number; span: number }[][] = [];
     const byId = new Map<string, Placement>();
     let cur = -1;
+    let monotonicAnchor = 0;
 
     const openPage = (): number => {
       newPage();
+      monotonicAnchor = 0;
       pageMembers.push([]);
       return (cur = pages.length - 1);
     };
@@ -128,7 +136,7 @@ export function packBlocks(
     // 阅读顺序由块的先后决定（先放的块整体靠左靠上），瀑布流布局下可接受。
     const tryPlace = (m: { id: string; heightMm: number; span: number }, p: number): boolean => {
       const maxAnchor = geo.columnsPerPage - m.span;
-      for (let anchor = 0; anchor <= maxAnchor; anchor++) {
+      for (let anchor = monotonicOrder && p === cur ? monotonicAnchor : 0; anchor <= maxAnchor; anchor++) {
         const y = windowTop(pages[p], anchor, m.span, geo.gapMm);
         if (y + m.heightMm <= geo.columnHeightMm) {
           const pl = { id: m.id, page: p, column: anchor, span: m.span, yMm: y };
@@ -136,6 +144,7 @@ export function packBlocks(
           byId.set(m.id, pl);
           settle(pages[p], anchor, m.span, y, m.heightMm);
           pageMembers[p].push(m);
+          if (monotonicOrder && p === cur) monotonicAnchor = anchor;
           return true;
         }
       }

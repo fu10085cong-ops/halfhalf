@@ -116,7 +116,8 @@ export async function markdownToHtml(
 
   md.renderer.rules.image = (tokens, idx, mdOptions, _env, self) => {
     const token = tokens[idx];
-    token.attrSet('class', 'hh-image');
+    const sourcePage = /^HH_SOURCE_PAGE_\d+$/.test(token.attrGet('alt') ?? '');
+    token.attrSet('class', sourcePage ? 'hh-image hh-source-page-image' : 'hh-image');
     token.attrSet('loading', 'eager');
     const srcIdx = token.attrIndex('src');
     if (srcIdx >= 0 && token.attrs) {

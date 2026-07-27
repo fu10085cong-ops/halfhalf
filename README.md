@@ -16,6 +16,8 @@
 - **自动字号搜索**：二分搜索算法，在 6pt~24pt 范围内找到满足页数限制的最大字号
 - **多格式支持**：标题、列表、表格、代码块（Shiki 高亮）、图片、数学/物理公式（KaTeX）、Mermaid 图表
 - **拖放导入**：Word `.docx`、文字型 PDF 和图片可直接拖到左侧；显示来源概述与提取风险，正文仍可编辑并继续进入精简、场景识别和目标页数排版
+- **PDF 逐页质量路由**：按可测的坏字体比例决定每页走可编辑文字还是原页图像保真——异常页稀疏时只换那几页，密集时整篇统一视觉模式，避免大字文本与幻灯片图混排。不看文件名、学科或页数
+- **可逆知识重构**：导入产物带页锚点的知识节点；用户声明用途、必须保留、重点和希望忽略后，系统先出可审计计划，确认才应用，并保留来源对照与撤销
 - **原子块保护**：代码块/公式/图表/表格不会被硬切断到两页之间
 - **实时预览**：SSE 流式返回搜索过程，可视化每次迭代结果
 - **多种纸张**：A4 / A5 / Letter
@@ -179,7 +181,10 @@ halfhalf/
 |------|------|
 | `POST /api/scene` | **场景排版一站式接口（网格引擎）**：内容统计 → 规则引擎（硬约束取交集，或用户强制预设）→ 公式预检 → 字号搜索 → 渲染，返回统计/rule trace/警告/`jobId`。图片以 data: URI 内嵌在 Markdown 里；`debug: true` 叠加网格调试层（文件名加「-网格」后缀，不覆盖正式版）；`allowReorder: true` 声明内容可乱序（RULES.md S2），开启跨页回填换密度；`subject: 'calculus'/'os'/'semiconductor'/'politics'` 声明学科启用学科层规则（H3 表格保护/S2 顺序弱），响应附关键词识别建议 `subjectSuggestion`（建议 ≠ 声明） |
 | `GET /api/download/:jobId/pdf` | 下载最终 PDF，任务内存保留 30 分钟 |
-| `POST /api/import/document` | 单文件内存导入（最大 20 MB）：`.docx` 转语义化 Markdown；文字型 PDF 按页提取；扫描件返回 `OCR_REQUIRED` 与页数等检测信息，不返回假成功 |
+| `POST /api/import/document` | 单文件内存同步导入（最大 20 MB）：`.docx` 转语义化 Markdown；PDF 按逐页质量路由（可信页保留可编辑文字，坏字体页回退原页图像），并附带页锚点知识节点；扫描件返回 `OCR_REQUIRED` 与页数等检测信息，不返回假成功。与异步队列共享并发额度，忙时返回 `429 IMPORT_BUSY` |
+| `POST /api/import/jobs` | 异步导入任务：`202` 即返回任务号，配套 `GET /api/import/jobs/:jobId` 查进度、`GET /api/import/jobs` 取轻量历史（不内嵌页面图）、`DELETE` 取消、`GET /api/import/jobs/limits` 查限流。设 `HALFHALF_DATA_DIR` 后任务快照与结果可跨重启恢复，重启时未完成的任务标记 `IMPORT_INTERRUPTED` 而非假成功 |
+| `POST /api/restructure/plan` | 按用户用途、必留/重点/忽略意图生成逐节点的可审计决策，每条带来源锚点与理由；`mustKeep` 压过 `omit`，低置信度公式走 `visual_keep` 不被改写 |
+| `POST /api/restructure/materialize` | 校验来源哈希后确定性应用计划，返回重构 Markdown、修订号、操作日志与前后对照，供前端做对比和撤销 |
 | `POST /api/ai/compress` | **AI 语义级精简（BYOK）**：分块 → 遮罩刚性原子（公式/代码/表格/图片/标题）→ 只把散文交给用户自带 key 的 AI 改写成要点式 → 回填 → 三道安全网（占位符完整/无新公式错误/确实缩短），批量返回逐块「原文 vs 建议」。**只出建议不自动改文档**，前端展示 diff、用户逐块接受后才写回 |
 | `POST /api/ai/proxy` | 通用 BYOK AI 转发接口，域名白名单校验后原样转发 |
 

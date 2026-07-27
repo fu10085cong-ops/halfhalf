@@ -6,6 +6,7 @@ import {
   countDocumentCharacters,
   importDocx,
   importTextPdf,
+  selectPdfVisualPages,
 } from '../../src/engine/document-import.js';
 
 test('text PDF imports page text and reports page coverage', async () => {
@@ -55,4 +56,34 @@ test('Word character count excludes embedded image base64', () => {
   const markdown = '# Notes\n\n正文内容\n\n![](data:image/png;base64,QUFBQUFBQUFB)';
 
   assert.equal(countDocumentCharacters(markdown), countDocumentCharacters('# Notes\n\n正文内容\n\n![]()'));
+});
+
+test('visual fallback policy stays local for sparse defects', () => {
+  const pages = Array.from({ length: 20 }, (_, index) => ({
+    page: index + 1,
+    route: index === 4 ? ('hybrid' as const) : ('native' as const),
+  }));
+
+  assert.deepEqual(selectPdfVisualPages(pages, 20), [5]);
+});
+
+test('visual fallback policy uses a coherent mode for dense defects', () => {
+  const pages = Array.from({ length: 10 }, (_, index) => ({
+    page: index + 1,
+    route: index < 4 ? ('hybrid' as const) : ('native' as const),
+  }));
+
+  assert.deepEqual(
+    selectPdfVisualPages(pages, 10),
+    Array.from({ length: 10 }, (_, index) => index + 1)
+  );
+});
+
+test('small mixed documents do not overreact to one or two visual pages', () => {
+  const pages = [
+    { page: 1, route: 'native' as const },
+    { page: 2, route: 'hybrid' as const },
+    { page: 3, route: 'ocr' as const },
+  ];
+  assert.deepEqual(selectPdfVisualPages(pages, 3), [2, 3]);
 });
