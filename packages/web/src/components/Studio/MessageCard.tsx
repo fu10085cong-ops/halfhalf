@@ -2,7 +2,7 @@
  * 对话流单卡：user 文本气泡 / convert 转换卡（流式预览+体检结论）/ pdf 结果卡（指标+预览/下载）。
  * convert/pdf 卡由动作随 phase 原地更新。
  */
-import { IconCheck } from './icons';
+import { IconAlert, IconCheck } from './icons';
 import { useStudio, type StudioMessage } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
@@ -22,10 +22,12 @@ function ConvertCard({ msg }: { msg: StudioMessage }) {
       {msg.phase === 'done' && msg.check && (
         <div style={{ marginTop: 4 }}>
           {msg.check.ok ? (
-            <span className="hh-msg-ok">✅ 结构体检通过（{msg.check.blockCount} 块）· 已写回材料</span>
+            <span className="hh-msg-ok">
+              <IconCheck size={12} /> 结构体检通过（{msg.check.blockCount} 块）· 已写回材料
+            </span>
           ) : (
             <span className="hh-msg-warn">
-              ⚠️ 结构可能欠佳：{msg.check.problems.join('、')}（已写回材料，可在左栏点开修改）
+              <IconAlert /> 结构可能欠佳：{msg.check.problems.join('、')}（已写回材料，可在左栏点开修改）
             </span>
           )}
         </div>
@@ -47,17 +49,17 @@ function PdfCard({ msg }: { msg: StudioMessage }) {
     <>
       {p.withinTarget ? (
         <div className="hh-pdf-headline" style={{ color: '#15803d' }}>
-          ✓ 已排进 {p.pages} 页 · 字号 {p.fontSize}pt
+          <IconCheck size={12} /> 已排进 {p.pages} 页 · 字号 {p.fontSize}pt
           {p.fill !== null && ` · 填充 ${p.fill}%`} —— 可以打印
         </div>
       ) : (
         <div className="hh-pdf-headline" style={{ color: '#b45309' }}>
-          ⚠ 目标 {p.targetPages} 页塞不下：目前最优 {p.pages} 页 / {p.fontSize}pt
+          <IconAlert /> 目标 {p.targetPages} 页塞不下：目前最优 {p.pages} 页 / {p.fontSize}pt
         </div>
       )}
       {p.warnings.map((w, i) => (
         <div key={i} className="hh-msg-warn">
-          ⚠️ {w}
+          <IconAlert /> {w}
         </div>
       ))}
       <div className="hh-msg-actions">

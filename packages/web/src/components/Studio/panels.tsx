@@ -13,6 +13,7 @@ import type {
   RestructurePlan,
 } from '../../types/restructure';
 import { AI_DEFAULTS, AI_KEYS, byokProvider, lsGet, lsSet } from './aiConfig';
+import { IconAlert, IconCheck } from './icons';
 import { makeSource, useStudio } from './useStudioStore';
 
 /** 能否勾选应用：非跳过、有实际改动、原子/公式安全网都过 */
@@ -157,10 +158,10 @@ export function CompressPanel() {
                 </span>
               )}
               {s.safety.ok ? (
-                <span className="hh-msg-ok">✅</span>
+                <span className="hh-msg-ok"><IconCheck size={12} /></span>
               ) : (
                 <span style={{ color: s.skipped ? '#64748b' : '#b45309' }}>
-                  {s.skipped ? '—' : '⚠️'} {s.safety.reason}
+                  {s.skipped ? '—' : <IconAlert />} {s.safety.reason}
                 </span>
               )}
             </label>
@@ -240,7 +241,7 @@ export function DiagnosticsPanel() {
                     <td>{b.page ?? '—'}</td>
                     <td>{b.scale < 1 ? `×${b.scale}` : '—'}</td>
                     <td>
-                      {b.oversized ? '⛔' : b.belowMinScale ? '⚠️' : ''}
+                      {b.oversized || b.belowMinScale ? <IconAlert /> : ''}
                       {b.stretchedPt ? `↗${b.stretchedPt}pt` : ''}
                     </td>
                   </tr>

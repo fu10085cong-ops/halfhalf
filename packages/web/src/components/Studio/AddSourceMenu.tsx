@@ -6,6 +6,7 @@
 import { useRef, useState } from 'react';
 import { apiFetch } from '../../api';
 import { importDocument, unsupportedFileReason } from '../../lib/documentImport';
+import { IconClipboard, IconDoc, IconLink } from './icons';
 import { makeSource, useStudio } from './useStudioStore';
 import type { KnowledgeDocument } from '../../types/restructure';
 
@@ -188,13 +189,13 @@ export default function AddSourceMenu() {
       {open && mode === null && (
         <div className="hh-add-options">
           <button type="button" onClick={() => setMode('paste')}>
-            📋 粘贴文本 <small>（课件/聊天记录/任意生料）</small>
+            <IconClipboard /> 粘贴文本 <small>（课件/聊天记录/任意生料）</small>
           </button>
           <button type="button" onClick={() => inputRef.current?.click()}>
-            📄 上传文件 <small>（.docx / 文字型 PDF / 图片）</small>
+            <IconDoc /> 上传文件 <small>（.docx / 文字型 PDF / 图片）</small>
           </button>
           <button type="button" onClick={() => setMode('url')}>
-            🔗 网页 URL <small>（抓取正文,动态渲染页可能抓不到）</small>
+            <IconLink /> 网页 URL <small>（抓取正文,动态渲染页可能抓不到）</small>
           </button>
         </div>
       )}
