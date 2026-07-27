@@ -163,6 +163,52 @@ test('structurize: 修正轮仍不过 → 照常返回且 check.ok=false（让�
   assert.equal(result.markdown, bad2);
 });
 
+// —— 元素封闭子集(docs/FORMAT.md §2)——
+
+test('白名单:超链接被拒,图片与围栏/公式里的链接形态不误报', async () => {
+  const linked = `# 标题\n\n## 一节\n\n详见[官方文档](https://example.com/doc)与 <https://example.com>。`;
+  const bad = await checkStructure(linked);
+  assert.ok(bad.problems.some((p) => p.includes('超链接')), JSON.stringify(bad.problems));
+
+  const image = `# 标题\n\n## 一节\n\n![截图](https://example.com/a.png)\n\n正文文字。`;
+  const ok = await checkStructure(image);
+  assert.ok(!ok.problems.some((p) => p.includes('超链接')), '图片不是超链接');
+
+  const fenced = '# 标题\n\n## 一节\n\n```text\n[a](https://x.com)\n```\n正文。';
+  const code = await checkStructure(fenced);
+  assert.ok(!code.problems.some((p) => p.includes('超链接')), '围栏内是代码内容');
+});
+
+test('白名单:Unicode 上下标被拒,LaTeX 上下标不受影响', async () => {
+  const uni = `# 标题\n\n## 一节\n\n面积是 x² 加 H₂O 的量。`;
+  const bad = await checkStructure(uni);
+  assert.ok(bad.problems.some((p) => p.includes('上下标')), JSON.stringify(bad.problems));
+
+  const latex = `# 标题\n\n## 一节\n\n面积是 $x^2$ 加 $H_2O$ 的量。`;
+  const ok = await checkStructure(latex);
+  assert.ok(!ok.problems.some((p) => p.includes('上下标')));
+});
+
+test('白名单:分隔线与 setext 下划线被拒;GFM 表格分隔行不误报', async () => {
+  const divided = `# 标题\n\n## 一节\n\n上半部分。\n\n---\n\n下半部分。`;
+  const bad = await checkStructure(divided);
+  assert.ok(bad.problems.some((p) => p.includes('分隔线')), JSON.stringify(bad.problems));
+
+  const gfm = `# 标题\n\n## 一节\n\n| 名称 | 含义 |\n|---|---|\n| 数据 | 记录 |`;
+  const ok = await checkStructure(gfm);
+  assert.ok(!ok.problems.some((p) => p.includes('分隔线')), '表格分隔行有管道,不是分隔线');
+});
+
+test('白名单:裸 HTML 标签被拒;散文比较符与公式里的尖括号不误报', async () => {
+  const html = `# 标题\n\n## 一节\n\n第一行<br>第二行,水是 H<sub>2</sub>O。`;
+  const bad = await checkStructure(html);
+  assert.ok(bad.problems.some((p) => p.includes('HTML')), JSON.stringify(bad.problems));
+
+  const prose = `# 标题\n\n## 一节\n\n若 a<b 且 c>d,则交换。公式 $x<y$ 同理。`;
+  const ok = await checkStructure(prose);
+  assert.ok(!ok.problems.some((p) => p.includes('HTML')), '比较符散文不是 HTML');
+});
+
 test('checkStructure: Pandoc 伪表格分隔行被抓(真材料 db-systems 判例);GFM 表格与围栏内横线不误报', async () => {
   const pandoc = `# 数据库\n\n## 概念\n\n  名称                   含义\n  ---------------------- ------------------------------------\n  数据(Data)             描述客观事物的符号记录\n`;
   const bad = await checkStructure(pandoc);
