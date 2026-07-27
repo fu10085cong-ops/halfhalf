@@ -285,8 +285,26 @@ export interface RestructurePlan {
   warnings: string[];
 }
 
-/** POST /api/import/document、/api/import/url 的导入结果。 */
-export type ImportedDocumentKind = 'docx' | 'pdf' | 'url';
+/** POST /api/import/document、/api/import/url、/api/research/jobs 的产出。 */
+export type ImportedDocumentKind = 'docx' | 'pdf' | 'url' | 'research';
+
+/** 一条搜索结果。SearchProvider 的统一输出形状，与具体厂商解耦。 */
+export interface SearchHit {
+  title: string;
+  /** 搜索引擎已抽好的正文片段；常在句子中间截断 */
+  snippet: string;
+  url: string;
+  /** 从 url 解析出的主机名，质量闸按它判断 */
+  domain: string;
+  publishDate?: string;
+}
+
+/** 进入最终产出的来源，写进 summary.sources 供前端展示与用户回查。 */
+export interface ResearchSource {
+  url: string;
+  domain: string;
+  title: string;
+}
 
 export interface DocumentImportSummary {
   kind: ImportedDocumentKind;
@@ -304,6 +322,8 @@ export interface DocumentImportSummary {
   sourceUrl?: string;
   /** PDF 逐页提取质量诊断；docx/url 导入不产出。 */
   quality?: DocumentQualityReport;
+  /** 联网补洞采纳的来源清单；仅 kind === 'research' 时产出。 */
+  sources?: ResearchSource[];
   warnings: string[];
 }
 
