@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api';
+import { consumeSse } from '../../lib/sse';
 import type { AiProviderConfig } from '../../types';
 
 interface StructurizeCheck {
@@ -24,38 +25,6 @@ interface Props {
   /** 文档导入（Word/PDF 提取产物）注入原料框：seq 变化触发追加。生料该走 AI 转换,
    *  不该直接进排版框——真实判例:用户把 docx 拖进本区却只得到一行文件名 */
   injected?: { text: string; seq: number } | null;
-}
-
-/** 解析 text/event-stream 帧（event: X / data: JSON），逐帧回调 */
-async function consumeSse(
-  resp: Response,
-  on: (event: string, data: Record<string, unknown>) => void
-): Promise<void> {
-  const reader = resp.body!.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let sep: number;
-    while ((sep = buf.indexOf('\n\n')) >= 0) {
-      const frame = buf.slice(0, sep);
-      buf = buf.slice(sep + 2);
-      let event = 'message';
-      let data = '';
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event: ')) event = line.slice(7).trim();
-        else if (line.startsWith('data: ')) data += line.slice(6);
-      }
-      if (!data) continue;
-      try {
-        on(event, JSON.parse(data) as Record<string, unknown>);
-      } catch {
-        /* 半截帧等异常：跳过单帧，不中断整个流 */
-      }
-    }
-  }
 }
 
 export default function ChatIntake({ provider, onAdopt, injected }: Props) {

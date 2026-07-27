@@ -1,35 +1,10 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { apiFetch } from '../../api';
+import {
+  importDocument,
+  unsupportedFileReason,
+  type DocumentImportSummary,
+} from '../../lib/documentImport';
 import './DocumentDropSurface.css';
-
-interface DocumentImportSummary {
-  kind: 'docx' | 'pdf';
-  originalName: string;
-  sizeBytes: number;
-  characterCount: number;
-  paragraphCount: number;
-  headingCount: number;
-  tableCount: number;
-  imageCount: number;
-  pageCount?: number;
-  textPageCount?: number;
-  warnings: string[];
-}
-
-interface ImportResponse {
-  markdown: string;
-  summary: DocumentImportSummary;
-}
-
-interface ErrorResponse {
-  code?: string;
-  error?: string;
-  details?: {
-    pageCount?: number;
-    textPageCount?: number;
-    characterCount?: number;
-  };
-}
 
 type AttachmentStatus = 'processing' | 'ready' | 'error';
 
@@ -46,7 +21,8 @@ interface Attachment {
 
 interface DocumentDropSurfaceProps {
   children: (uploadPanel: ReactNode) => ReactNode;
-  onMarkdownImport: (markdown: string) => void;
+  /** summary：Studio 用它取文件名/统计建材料卡；旧界面忽略即可 */
+  onMarkdownImport: (markdown: string, summary?: DocumentImportSummary) => void;
   onImageImport: (file: File) => Promise<void>;
 }
 
@@ -124,38 +100,25 @@ export default function DocumentDropSurface({
           continue;
         }
 
-        if (!/\.(?:docx|pdf)$/i.test(file.name)) {
-          throw new Error(
-            /\.doc$/i.test(file.name)
-              ? '旧版 .doc 请先在 Word 中“另存为 .docx”。'
-              : '当前支持 .docx、可复制文字的 PDF 和常见图片。'
-          );
-        }
+        const unsupported = unsupportedFileReason(file.name);
+        if (unsupported) throw new Error(unsupported);
 
-        const form = new FormData();
-        form.append('file', file);
-        // apiFetch：部署环境的访问口令头（x-access-code）；FormData 不能手动设 Content-Type
-        const response = await apiFetch('/api/import/document', {
-          method: 'POST',
-          body: form,
-        });
-        const data = (await response.json()) as ImportResponse | ErrorResponse;
-        if (!response.ok || !('markdown' in data)) {
-          const failure = data as ErrorResponse;
+        const outcome = await importDocument(file);
+        if (!outcome.ok) {
           updateAttachment(id, {
             status: 'error',
-            error: failure.error || `导入失败（HTTP ${response.status}）`,
-            errorCode: failure.code,
-            pageCount: failure.details?.pageCount,
+            error: outcome.error,
+            errorCode: outcome.errorCode,
+            pageCount: outcome.pageCount,
           });
           continue;
         }
 
-        onMarkdownImport(data.markdown);
+        onMarkdownImport(outcome.markdown, outcome.summary);
         updateAttachment(id, {
           status: 'ready',
-          name: data.summary.originalName,
-          summary: data.summary,
+          name: outcome.summary.originalName,
+          summary: outcome.summary,
         });
       } catch (error) {
         updateAttachment(id, {
