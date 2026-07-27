@@ -6,6 +6,7 @@ import { exportRouter } from './routes/export.js';
 import { aiRouter } from './routes/ai.js';
 import { sceneRouter } from './routes/scene.js';
 import { documentUploadRouter } from './routes/document-upload.js';
+import { urlImportRouter } from './routes/url-import.js';
 import { fixturesRouter } from './routes/fixtures.js';
 import { closeSharedBrowser } from './engine/browser-pool.js';
 import { accessCodeGuard } from './middleware/access-code.js';
@@ -30,6 +31,7 @@ app.use('/api', exportRouter);
 app.use('/api', aiRouter);
 app.use('/api', sceneRouter);
 app.use('/api', documentUploadRouter);
+app.use('/api', urlImportRouter);
 app.use('/api', fixturesRouter);
 
 // Health check

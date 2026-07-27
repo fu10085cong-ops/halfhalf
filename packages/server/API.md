@@ -69,6 +69,32 @@ interface ApiErrorResponse {
 
 ---
 
+## `POST /api/import/url`
+
+网页链接 → 正文抽取（Readability，小页面退回剥壳 fallback）→ Markdown。响应与
+`/api/import/document` 同形（`summary.kind = 'url'`，另带 `sourceUrl` 最终地址）。
+网页内容只在本次请求内存中处理；网页图片不导入（仅文本）。
+
+### 请求 body
+
+```ts
+{ url: string }   // http/https 链接
+```
+
+### 限制与安全
+
+- **SSRF 防护**：目标域名先 DNS 解析，任一地址落在私网/环回/链路本地/CGNAT 段即
+  `403 URL_BLOCKED`；重定向手动跟随（≤3 跳）且逐跳复查。`HALFHALF_URL_ALLOW_PRIVATE=1`
+  仅供本地联调，生产绝不要开。
+- 15s 超时（`504 FETCH_TIMEOUT`）、响应 ≤5MB（`413 PAGE_TOO_LARGE`）、
+  content-type 必须是 HTML（`415 NOT_HTML`）。
+- 限流：每 IP 每小时 `HALFHALF_URL_RATE_LIMIT` 次（默认 30，`429`）。
+
+常见错误码：`URL_INVALID`、`URL_BLOCKED`、`FETCH_FAILED`、`FETCH_TIMEOUT`、`NOT_HTML`、
+`PAGE_TOO_LARGE`、`EXTRACT_EMPTY`（动态渲染/登录墙页面——提示用户直接复制文字粘贴）。
+
+---
+
 ## `POST /api/scene`
 
 场景排版一站式接口（网格引擎，ScenePanel 用的就是它）：分块 → 内容统计 → 场景推荐（或用户指定）
@@ -205,6 +231,46 @@ event: delta    data: { text: string, attempt: 1 | 2 }   // 增量 md 文本;att
 event: retry    data: { problems: string[] }             // 首轮体检不过,即将追问修正
 event: result   data: { markdown, check: { ok, problems, blockCount }, attempts }  // 最终结果(ok=false 也返回)
 event: error    data: { error: string }
+```
+
+---
+
+## `POST /api/ai/chat`（SSE 流式）
+
+多轮材料对话（Studio 中栏）：围绕客户端带来的材料回答问题、按指示改写、给排版取舍建议。
+学术诚信红线写死在 system prompt（不做题/不出题库答案/不新增材料外知识）。
+服务端**无状态**：材料 + 历史每次全量带上，不落盘不留存。
+
+```ts
+// 请求
+{
+  messages: { role: 'user' | 'assistant'; content: string }[]; // 末条必须是 user
+  context?: string;            // 参与对话的材料全文
+  provider?: AiProviderConfig; // BYOK;省略时用服务器统一 key
+}
+// 材料 + 对话总字数超过 HALFHALF_AI_MAX_INPUT(默认 6 万)返回 413
+// key 解析与限流与 /ai/structurize 完全同一套(限流窗口共享)
+// 服务端只保留最近 12 条历史、单条截 8000 字(engine/ai-chat.ts)
+```
+
+SSE 事件流：
+
+```
+event: delta    data: { text: string }    // 增量回复文本
+event: result   data: { reply: string }   // 完整回复(Markdown)
+event: error    data: { error: string }
+```
+
+---
+
+## `GET /api/ai/providers`
+
+「AI 设置」下拉的服务商预设清单（静态常量，与 BYOK 域名白名单同源维护，有单测锁）。
+
+```ts
+// 响应 200
+{ providers: { id, name, endpoint, defaultModel, keyUrl }[] }
+// 现有预设:deepseek / qwen(通义·百炼) / zhipu(智谱) / minimax / openai
 ```
 
 ---

@@ -26,7 +26,7 @@ export function countDocumentCharacters(markdown: string): number {
   );
 }
 
-function normalizeMarkdown(markdown: string): string {
+export function normalizeMarkdown(markdown: string): string {
   return markdown
     .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
@@ -34,8 +34,28 @@ function normalizeMarkdown(markdown: string): string {
     .trim();
 }
 
-function countMatches(value: string, pattern: RegExp): number {
+export function countMatches(value: string, pattern: RegExp): number {
   return [...value.matchAll(pattern)].length;
+}
+
+/** HTML\u2192Markdown \u7684\u7edf\u4e00 turndown \u914d\u7f6e\uff08docx \u5bfc\u5165\u4e0e URL \u6293\u53d6\u5171\u7528\uff09 */
+export function createTurndown(): TurndownService {
+  const turndown = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    emDelimiter: '*',
+    strongDelimiter: '**',
+  });
+  turndown.use(gfm);
+  turndown.addRule('removeEmptyLinks', {
+    filter: (node) =>
+      node.nodeName === 'A' &&
+      !node.textContent?.trim() &&
+      !(node as HTMLAnchorElement).querySelector('img'),
+    replacement: () => '',
+  });
+  return turndown;
 }
 
 function promoteFirstTableRows(html: string): string {
@@ -78,22 +98,7 @@ export async function importDocx(
     }
   );
 
-  const turndown = new TurndownService({
-    headingStyle: 'atx',
-    bulletListMarker: '-',
-    codeBlockStyle: 'fenced',
-    emDelimiter: '*',
-    strongDelimiter: '**',
-  });
-  turndown.use(gfm);
-  turndown.addRule('removeEmptyLinks', {
-    filter: (node) =>
-      node.nodeName === 'A' &&
-      !node.textContent?.trim() &&
-      !(node as HTMLAnchorElement).querySelector('img'),
-    replacement: () => '',
-  });
-
+  const turndown = createTurndown();
   const semanticHtml = promoteFirstTableRows(result.value);
   const markdown = normalizeMarkdown(turndown.turndown(semanticHtml));
   const imageCount = countMatches(result.value, /<img(?:\s|>)/gi);

@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/organic-d63f2c98-be3e-45e8-9970-9c9e2ff032a2/styles.css">
+<script src="_ds/organic-d63f2c98-be3e-45e8-9970-9c9e2ff032a2/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body),"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+h1,h2,h3,h4,h5,h6{font-family:var(--font-heading),"Noto Sans SC","PingFang SC",sans-serif}
+a{color:var(--color-accent-700)}a:hover{color:var(--color-accent-800)}
+@keyframes hhspin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;background:var(--color-bg)">
+
+<!-- 顶栏 -->
+<header style="display:flex;align-items:center;gap:12px;padding:12px 18px;flex-wrap:wrap">
+  <div style="width:32px;height:32px;border-radius:999px;background:var(--color-accent);display:grid;place-items:center;color:var(--color-bg);flex:none">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7v16H4z"></path><path d="M13 4h7v16h-7z"></path></svg>
+  </div>
+  <span style="font-family:var(--font-heading),'Noto Sans SC',sans-serif;font-size:19px;line-height:1.1">HalfHalf</span>
+  <span style="font-size:12.5px;color:color-mix(in srgb,var(--color-text) 52%,transparent);margin-right:auto">半开卷小抄工作台</span>
+  <button class="btn btn-secondary" style="font-size:13px;padding:7px 14px" onClick="{{ openAdvanced }}">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"></path><circle cx="18" cy="12" r="2"></circle><circle cx="13" cy="18" r="2"></circle></svg>
+    高级选项
+  </button>
+  <button class="btn btn-secondary" style="font-size:13px;padding:7px 14px" onClick="{{ openAi }}">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+    AI 设置
+  </button>
+</header>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;padding:0 18px 18px;align-items:flex-start">
+
+  <!-- ══ 栏一：材料 ══ -->
+  <section style="flex:1 1 300px;min-width:288px;max-width:420px;height:calc(100vh - 78px);min-height:560px;display:flex;flex-direction:column;background:var(--color-surface);border-radius:28px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:16px 18px 12px">
+      <span style="font-family:var(--font-heading),'Noto Sans SC',sans-serif;font-size:17px">材料</span>
+      <span style="flex:1"></span>
+      <span class="tag tag-neutral">{{ charLabel }}</span>
+    </div>
+    <div style="flex:1;min-height:0;overflow:auto;padding:0 14px 16px;display:flex;flex-direction:column;gap:10px">
+
+      <button class="btn btn-secondary btn-block" style="margin:0;justify-content:center;gap:8px;font-size:14px;padding:12px 16px;border-color:color-mix(in srgb,var(--color-text) 22%,transparent)" onClick="{{ openIntake }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+        添加材料
+      </button>
+
+      <div style="border-radius:22px;background:var(--color-neutral-100);padding:14px 15px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:13px;font-weight:700">把任意材料变成标准 Markdown</span>
+        <span style="font-size:11.5px;line-height:1.55;color:color-mix(in srgb,var(--color-text) 55%,transparent)">Word / 课件 / 聊天记录都行，AI 流式整理成 `#`/`##` 结构，再一键进排版。</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" style="font-size:12.5px;padding:7px 14px" onClick="{{ openIntake }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z"></path></svg>
+            材料转换
+          </button>
+          <button class="btn btn-secondary" style="font-size:12.5px;padding:7px 14px" onClick="{{ pickImage }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M4 17l5-5 4 4 3-3 4 4"></path></svg>
+            插入图片
+          </button>
+        </div>
+        <input type="file" accept="image/*" ref="{{ fileRef }}" style="display:none" onChange="{{ onFile }}">
+      </div>
+
+      <sc-if value="{{ devMode }}">
+        <div style="border-radius:22px;background:var(--color-accent-2-100);padding:14px 15px;display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-2-700)">开发者 · 测试材料</span>
+          <select class="input" style="font-size:12.5px;background:var(--color-neutral-100)" value="{{ fixtureSel }}" onChange="{{ onFixture }}">
+            <option value="">选择 fixture…</option>
+            <sc-for list="{{ fixtures }}" as="f" hint-placeholder-count="3">
+              <option value="{{ f.name }}">{{ f.label }}</option>
+            </sc-for>
+          </select>
+          <button class="btn btn-secondary" style="font-size:12.5px;padding:7px 13px;align-self:flex-start" onClick="{{ loadFixture }}">载入（替换编辑器）</button>
+          <span style="font-size:10.5px;line-height:1.5;color:var(--color-accent-2-800);opacity:.7">来自 packages/server/test/fixtures；生产环境接口 404 时整块隐藏</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ true }}">
+        <div style="border-radius:22px;background:var(--color-neutral-100);padding:14px 15px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 48%,transparent)">内容画像</span>
+          <sc-for list="{{ statRows }}" as="row" hint-placeholder-count="5">
+            <div style="display:flex;align-items:baseline;gap:8px;font-size:12.5px">
+              <span style="color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ row.label }}</span>
+              <span style="flex:1;height:1px;background:var(--color-divider)"></span>
+              <span style="font-weight:700">{{ row.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noResult }}">
+        <div style="flex:1;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:24px 18px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M9 13h6M9 17h4"></path></svg>
+          <span style="font-size:13px;font-weight:700;color:var(--color-text)">材料的内容画像会出现在这里</span>
+          <span style="font-size:11.5px;line-height:1.6">生成一次后显示字数、公式、图片、表格与块数 —— 引擎正是按它挑场景的。</span>
+        </div>
+      </sc-if>
+
+      <span style="font-size:10.5px;line-height:1.6;padding:0 4px;color:color-mix(in srgb,var(--color-text) 40%,transparent)">材料只过内存不落盘；AI Key 存本机浏览器。</span>
+    </div>
+  </section>
+
+  <!-- ══ 栏二：排版 ══ -->
+  <section style="flex:2 1 520px;min-width:400px;height:calc(100vh - 78px);min-height:560px;display:flex;flex-direction:column;background:var(--color-surface);border-radius:28px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:16px 18px 12px">
+      <span style="font-family:var(--font-heading),'Noto Sans SC',sans-serif;font-size:17px">排版</span>
+      <span class="tag tag-neutral">{{ sceneLabel }}</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary btn-icon" style="width:30px;height:30px;border-color:transparent" onClick="{{ openAdvanced }}" title="高级选项">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="12" cy="5" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="12" cy="19" r="1.4"></circle></svg>
+      </button>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow:auto;padding:0 14px;display:flex;flex-direction:column;gap:10px">
+      <div style="flex:1;min-height:280px;display:flex;flex-direction:column;border-radius:22px;background:var(--color-neutral-100);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid var(--color-divider)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M4 6h16M4 12h12M4 18h8"></path></svg>
+          <span style="font-size:12.5px;font-weight:700">Markdown</span>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">截图可直接 Ctrl/Cmd+V</span>
+        </div>
+        <textarea value="{{ markdown }}" onChange="{{ onMarkdown }}" onPaste="{{ onPaste }}" spellcheck="false" placeholder="粘贴 Markdown；截图可直接 Ctrl/Cmd+V" style="flex:1;min-height:240px;width:100%;border:0;background:transparent;resize:none;padding:14px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.75;color:var(--color-text);outline:none"></textarea>
+      </div>
+
+      <sc-if value="{{ busy }}">
+        <div style="display:flex;align-items:center;gap:11px;border-radius:22px;background:var(--color-accent-100);padding:13px 16px">
+          <span style="width:17px;height:17px;flex:none;border-radius:999px;border:2.75px solid var(--color-accent-300);border-top-color:var(--color-accent-700);animation:hhspin .8s linear infinite"></span>
+          <span style="font-size:13px;color:var(--color-accent-800)">正在二分搜索字号并渲染 PDF —— 通常 3–8 秒</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasError }}">
+        <div style="border-radius:22px;background:var(--color-accent-200);padding:13px 16px;display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:700;color:var(--color-accent-800)">出错了</span>
+          <span style="font-size:12.5px;line-height:1.55;color:var(--color-accent-800)">{{ errorMsg }}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ true }}">
+        <div style="border-radius:22px;background:{{ verdictBg }};padding:14px 16px;display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-family:var(--font-heading),'Noto Sans SC',sans-serif;font-size:18px;color:{{ verdictInk }}">{{ verdictTitle }}</span>
+            <span style="font-size:12.5px;color:{{ verdictInk }};opacity:.85">{{ verdictSub }}</span>
+          </div>
+          <sc-for list="{{ warnRows }}" as="w" hint-placeholder-count="0">
+            <div style="display:flex;gap:7px;font-size:12px;line-height:1.55;color:var(--color-accent-800)">
+              <span style="flex:none">⚠</span><span>{{ w.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- 底部动作条（借 NotebookLM 的 composer 位置） -->
+    <div style="padding:12px 14px 14px">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;border-radius:28px;background:var(--color-neutral-100);padding:9px 10px 9px 14px">
+        <span style="font-size:12px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">目标页数</span>
+        <div style="display:flex;align-items:center;gap:2px">
+          <button class="btn btn-secondary" style="width:26px;height:26px;padding:0;border-color:transparent;background:var(--color-surface)" onClick="{{ decPages }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+          </button>
+          <input value="{{ targetPages }}" onChange="{{ onPages }}" style="width:32px;text-align:center;font:inherit;font-size:14px;font-weight:700;border:0;background:transparent;color:inherit">
+          <button class="btn btn-secondary" style="width:26px;height:26px;padding:0;border-color:transparent;background:var(--color-surface)" onClick="{{ incPages }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+        </div>
+        <span style="width:1px;height:22px;background:var(--color-divider)"></span>
+        <button class="btn btn-secondary" style="font-size:12.5px;padding:6px 13px;background:var(--color-surface);border-color:transparent" onClick="{{ openAdvanced }}">{{ marginLabel }} · {{ oriLabel }}</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary" style="font-size:12.5px;padding:7px 14px;background:var(--color-surface);border-color:transparent" onClick="{{ runCompress }}" title="AI 把叙述性文字改写成要点式，只出建议不自动改">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 5.5L19.5 11 14 13.5 12 19l-2-5.5L4.5 11 10 8.5z"></path></svg>
+          AI 精简
+        </button>
+        <button class="btn btn-primary" style="font-size:13.5px;padding:9px 18px" onClick="{{ runScene }}">
+          {{ runLabel }}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 栏三：成果 ══ -->
+  <section style="flex:1 1 320px;min-width:300px;max-width:440px;height:calc(100vh - 78px);min-height:560px;display:flex;flex-direction:column;background:var(--color-surface);border-radius:28px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:16px 18px 12px">
+      <span style="font-family:var(--font-heading),'Noto Sans SC',sans-serif;font-size:17px">成果</span>
+      <span style="flex:1"></span>
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ true }}">
+        <span class="tag tag-accent-2">{{ pagesTag }}</span>
+      </sc-if>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow:auto;padding:0 14px 14px;display:flex;flex-direction:column;gap:12px">
+      <!-- 功能瓦片（点开即居中弹窗） -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+        <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:12px 13px;border-radius:20px;background:var(--color-neutral-100)" style-hover="background:var(--color-neutral-200)" onClick="{{ openPdf }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent-700)"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
+          <span style="display:flex;align-items:center;gap:6px;width:100%">
+            <span style="font-size:13px;font-weight:700">PDF 预览</span>
+            <span style="flex:1"></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="opacity:.4"><path d="M9 6l6 6-6 6"></path></svg>
+          </span>
+        </button>
+        <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:12px 13px;border-radius:20px;background:var(--color-accent-2-100)" style-hover="background:var(--color-accent-2-200)" onClick="{{ openSug }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent-2-700)"><path d="M12 3l2 5.5L19.5 11 14 13.5 12 19l-2-5.5L4.5 11 10 8.5z"></path></svg>
+          <span style="display:flex;align-items:center;gap:6px;width:100%">
+            <span style="font-size:13px;font-weight:700">AI 精简</span>
+            <span style="flex:1"></span>
+            <sc-if value="{{ hasSuggestions }}" hint-placeholder-val="{{ false }}">
+              <span class="tag tag-accent" style="padding:1px 8px;font-size:10px">{{ sugCount }}</span>
+            </sc-if>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="opacity:.4"><path d="M9 6l6 6-6 6"></path></svg>
+          </span>
+        </button>
+        <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:12px 13px;border-radius:20px;background:var(--color-accent-2-100)" style-hover="background:var(--color-accent-2-200)" onClick="{{ openEngine }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent-2-700)"><circle cx="12" cy="12" r="3"></circle><path d="M12 4v3M12 17v3M4 12h3M17 12h3"></path></svg>
+          <span style="display:flex;align-items:center;gap:6px;width:100%">
+            <span style="font-size:13px;font-weight:700">引擎详情</span>
+            <span style="flex:1"></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="opacity:.4"><path d="M9 6l6 6-6 6"></path></svg>
+          </span>
+        </button>
+        <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:12px 13px;border-radius:20px;background:var(--color-neutral-100)" style-hover="background:var(--color-neutral-200)" onClick="{{ openDiag }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="color:var(--color-accent-700)"><rect x="4" y="4" width="7" height="7" rx="2"></rect><rect x="13" y="4" width="7" height="7" rx="2"></rect><rect x="4" y="13" width="7" height="7" rx="2"></rect><rect x="13" y="13" width="7" height="7" rx="2"></rect></svg>
+          <span style="display:flex;align-items:center;gap:6px;width:100%">
+            <span style="font-size:13px;font-weight:700">块诊断</span>
+            <span style="flex:1"></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="opacity:.4"><path d="M9 6l6 6-6 6"></path></svg>
+          </span>
+        </button>
+        <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:12px 13px;border-radius:20px;background:var(--color-neutral-100)" style-hover="background:var(--color-neutral-200)" onClick="{{ openHistory }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent-700)"><path d="M12 7v5l4 2"></path><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 4v4h4"></path></svg>
+          <span style="display:flex;align-items:center;gap:6px;width:100%">
+            <span style="font-size:13px;font-weight:700">会话历史</span>
+            <span style="flex:1"></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="opacity:.4"><path d="M9 6l6 6-6 6"></path></svg>
+          </span>
+        </button>
+        <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:12px 13px;border-radius:20px;background:var(--color-accent-2-100)" style-hover="background:var(--color-accent-2-200)" onClick="{{ openAdvanced }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="color:var(--color-accent-2-700)"><path d="M4 6h16M4 12h10M4 18h7"></path><circle cx="18" cy="12" r="2"></circle><circle cx="13" cy="18" r="2"></circle></svg>
+          <span style="display:flex;align-items:center;gap:6px;width:100%">
+            <span style="font-size:13px;font-weight:700">排版参数</span>
+            <span style="flex:1"></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="opacity:.4"><path d="M9 6l6 6-6 6"></path></svg>
+          </span>
+        </button>
+      </div>
+
+      <span style="height:1px;background:var(--color-divider);margin:2px 4px"></span>
+
+      <!-- 输出区 -->
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button style="all:unset;cursor:pointer;display:block;border-radius:20px;overflow:hidden;background:var(--color-neutral-100);box-shadow:var(--shadow-sm)" style-hover="box-shadow:var(--shadow-md)" onClick="{{ openPdf }}">
+            <div style="position:relative;aspect-ratio:1/1.28;padding:10px;display:flex;flex-direction:column">
+              <div style="flex:1;display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:min-content;gap:4px;align-content:start">
+                <sc-for list="{{ thumbBlocks }}" as="b" hint-placeholder-count="8">
+                  <div style="grid-column:span {{ b.span }};border-radius:6px;background:{{ b.tone }};padding:4px 5px;display:flex;flex-direction:column;gap:2.5px">
+                    <span style="height:3px;width:60%;border-radius:999px;background:color-mix(in srgb,var(--color-text) 40%,transparent)"></span>
+                    <sc-for list="{{ b.lines }}" as="l" hint-placeholder-count="2">
+                      <span style="height:2px;border-radius:999px;background:color-mix(in srgb,var(--color-text) 18%,transparent);width:{{ l.w }}"></span>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+              <span style="position:absolute;right:12px;bottom:9px;font-size:9.5px;color:color-mix(in srgb,var(--color-text) 42%,transparent)">点击放大 · 1 / {{ pagesNum }}</span>
+            </div>
+          </button>
+          <div style="display:flex;align-items:center;gap:9px;padding:0 2px">
+            <span style="font-size:11.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:color-mix(in srgb,var(--color-text) 52%,transparent)">{{ fileName }}</span>
+            <span style="flex:1"></span>
+            <button class="btn btn-primary" style="font-size:12.5px;padding:8px 15px" onClick="{{ download }}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M5 20h14"></path></svg>
+              下载 PDF
+            </button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noResult }}">
+        <div style="flex:1;min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:26px 20px;color:color-mix(in srgb,var(--color-text) 50%,transparent)">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M4 4h16v13H4z"></path><path d="M8 21h8M12 17v4"></path><path d="M8 9h8M8 13h5"></path></svg>
+          <span style="font-size:13px;font-weight:700;color:var(--color-text)">排好的 PDF 会保存在这里</span>
+          <span style="font-size:11.5px;line-height:1.6">点「生成 PDF」后，这里出现 A4 缩略图；点缩略图可在屏幕中央放大逐页看。</span>
+        </div>
+      </sc-if>
+    </div>
+  </section>
+</div>
+</div>
+
+<!-- ══ 居中弹窗 ══ -->
+
+<sc-if value="{{ isPdf }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(780px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent-700)"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
+        <span class="dialog-title" style="font-size:19px">PDF 预览</span>
+        <span class="tag tag-accent-2">{{ pagesTag }}</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1;overflow:auto;background:var(--color-neutral-200);border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:16px;align-items:center">
+        <sc-for list="{{ pages }}" as="p" hint-placeholder-count="2">
+          <div style="width:min(100%,420px);aspect-ratio:1/1.414;background:#fdfbf6;border-radius:8px;box-shadow:var(--shadow-md);padding:16px;display:flex;flex-direction:column">
+            <div style="flex:1;display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:min-content;gap:6px;align-content:start">
+              <sc-for list="{{ p.blocks }}" as="b" hint-placeholder-count="8">
+                <div style="grid-column:span {{ b.span }};border-radius:7px;background:{{ b.tone }};padding:6px 7px;display:flex;flex-direction:column;gap:3.5px">
+                  <span style="height:4px;width:58%;border-radius:999px;background:color-mix(in srgb,var(--color-text) 42%,transparent)"></span>
+                  <sc-for list="{{ b.lines }}" as="l" hint-placeholder-count="3">
+                    <span style="height:2.5px;border-radius:999px;background:color-mix(in srgb,var(--color-text) 20%,transparent);width:{{ l.w }}"></span>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+            <span style="align-self:flex-end;font-size:9.5px;color:color-mix(in srgb,var(--color-text) 40%,transparent)">{{ p.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 48%,transparent)">此处为版面示意；实现时嵌入 /api/download/:jobId/pdf 的 blob URL。</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-primary" style="font-size:13px;padding:8px 16px" onClick="{{ download }}">下载 PDF</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isIntake }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(700px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent-700)"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z"></path></svg>
+        <span class="dialog-title" style="font-size:19px">材料转换</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:color-mix(in srgb,var(--color-text) 60%,transparent)">丢进任意文本（可多次追加），AI 流式产出标准 Markdown：`#`/`##` 结构、每节 ≤800 字、公式 `$…$`、表格 GFM。只重组你给的内容，不新增知识。</p>
+      <textarea class="input" style="min-height:120px;border-radius:20px;background:var(--color-neutral-100);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.7" placeholder="把原始材料粘到这里（可多次粘贴拼接）—— 不需要是 Markdown" value="{{ raw }}" onChange="{{ onRaw }}"></textarea>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <sc-if value="{{ intakeStatus }}" hint-placeholder-val="{{ false }}">
+          <span style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--color-accent-800)">
+            <span style="width:14px;height:14px;border-radius:999px;border:2.5px solid var(--color-accent-300);border-top-color:var(--color-accent-700);animation:hhspin .8s linear infinite"></span>
+            {{ intakeStatus }}
+          </span>
+        </sc-if>
+        <sc-if value="{{ intakeIdle }}" hint-placeholder-val="{{ true }}">
+          <span style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">将使用服务器配置的 AI；想用自己的 key 在「AI 设置」里填</span>
+        </sc-if>
+        <span style="flex:1"></span>
+        <button class="btn btn-primary" style="font-size:13px;padding:8px 16px" onClick="{{ runIntake }}">转换为标准 Markdown</button>
+      </div>
+      <sc-if value="{{ hasIntakePreview }}" hint-placeholder-val="{{ false }}">
+        <pre style="margin:0;flex:1;overflow:auto;max-height:34vh;padding:14px 16px;border-radius:20px;background:var(--color-neutral-100);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word">{{ intakePreview }}</pre>
+      </sc-if>
+      <sc-if value="{{ intakeDone }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="tag tag-accent-2">✓ 结构体检通过（14 块）</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-secondary" style="font-size:13px;padding:8px 15px" onClick="{{ adoptOnly }}">仅写入编辑器</button>
+          <button class="btn btn-primary" style="font-size:13px;padding:8px 15px" onClick="{{ adoptAndRun }}">采用并排版</button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isAdvanced }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(760px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" style="color:var(--color-accent-700)"><path d="M4 6h16M4 12h10M4 18h7"></path><circle cx="18" cy="12" r="2"></circle><circle cx="13" cy="18" r="2"></circle></svg>
+        <span class="dialog-title" style="font-size:19px">排版参数</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:var(--space-3);padding-right:2px">
+        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 48%,transparent)">场景</span>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px">
+          <sc-for list="{{ sceneCards }}" as="c" hint-placeholder-count="6">
+            <button style="all:unset;cursor:pointer;display:flex;flex-direction:column;gap:5px;padding:13px 15px;border-radius:20px;background:{{ c.bg }};border:1.5px solid {{ c.border }}" onClick="{{ c.onPick }}">
+              <span style="display:flex;align-items:center;gap:7px;width:100%">
+                <span style="font-size:13.5px;font-weight:700">{{ c.title }}</span>
+                <span style="flex:1"></span>
+                <span style="font-size:13px;color:var(--color-accent-700)">{{ c.check }}</span>
+              </span>
+              <span style="font-size:11.5px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ c.desc }}</span>
+            </button>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--space-3)">
+          <div class="field">
+            <label>学科（选中才启用对应护城河规则）</label>
+            <select class="input" style="background:var(--color-neutral-100)" value="{{ subject }}" onChange="{{ onSubject }}">
+              <sc-for list="{{ subjectOptions }}" as="o" hint-placeholder-count="5">
+                <option value="{{ o.value }}">{{ o.label }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div class="field">
+            <label>纸张方向</label>
+            <div class="seg">
+              <label class="seg-opt"><input type="radio" name="hh-ori" value="portrait" checked="{{ isPortrait }}" onChange="{{ onPortrait }}">竖版</label>
+              <label class="seg-opt"><input type="radio" name="hh-ori" value="landscape" checked="{{ isLandscape }}" onChange="{{ onLandscape }}">横版</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>页边距（四边统一）</label>
+            <select class="input" style="background:var(--color-neutral-100)" value="{{ marginMm }}" onChange="{{ onMargin }}">
+              <option value="10">标准 10mm</option>
+              <option value="8">紧 8mm</option>
+              <option value="6">窄 6mm（约 +7.6% 版面）</option>
+              <option value="4">极窄 4mm（看打印机）</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:20px;background:var(--color-neutral-100)">
+          <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer">
+            <input type="checkbox" checked="{{ stretchFill }}" onChange="{{ onStretch }}" style="margin-top:3px;accent-color:var(--color-accent)">
+            <span>满版伸展<span style="display:block;font-size:11.5px;color:color-mix(in srgb,var(--color-text) 52%,transparent)">定稿后逐块微放大字号（≤ +2pt）填掉柱底空隙；想全文严格等字号就关掉</span></span>
+          </label>
+          <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer">
+            <input type="checkbox" checked="{{ allowReorder }}" onChange="{{ onReorder }}" style="margin-top:3px;accent-color:var(--color-accent)">
+            <span>允许乱序换密度<span style="display:block;font-size:11.5px;color:color-mix(in srgb,var(--color-text) 52%,transparent)">要点式材料（政治「一问几面」）几乎无代价；推导/教程类不建议</span></span>
+          </label>
+          <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer">
+            <input type="checkbox" checked="{{ debug }}" onChange="{{ onDebug }}" style="margin-top:3px;accent-color:var(--color-accent)">
+            <span>显示网格<span style="display:block;font-size:11.5px;color:color-mix(in srgb,var(--color-text) 52%,transparent)">PDF 上叠加 24 列网格线、块方框与标签，不改变排版本身</span></span>
+          </label>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" style="font-size:13px;padding:8px 16px" onClick="{{ close }}">关闭</button>
+        <button class="btn btn-primary" style="font-size:13px;padding:8px 18px" onClick="{{ applyAndRun }}">保存并重新生成</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isAi }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(560px,100%);gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="dialog-title" style="font-size:19px">AI 设置</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div class="field"><label>端点（仅 OpenAI 兼容 /chat/completions）</label><input class="input" style="background:var(--color-neutral-100)" value="{{ aiEndpoint }}" onChange="{{ onEndpoint }}" placeholder="https://api.openai.com/v1/chat/completions"></div>
+      <div class="field"><label>模型</label><input class="input" style="background:var(--color-neutral-100)" value="{{ aiModel }}" onChange="{{ onModel }}" placeholder="gpt-4o-mini"></div>
+      <div class="field"><label>API Key</label><input class="input" style="background:var(--color-neutral-100)" type="password" value="{{ aiKey }}" onChange="{{ onKey }}" placeholder="sk-..."></div>
+      <p style="margin:0;font-size:12px;line-height:1.6;color:color-mix(in srgb,var(--color-text) 55%,transparent)">Key 存本机浏览器（localStorage），只在请求内存里过后端，不落服务器。留空则「材料转换」用服务器统一 key，「AI 精简」会提示先填 key。</p>
+      <div class="dialog-actions"><button class="btn btn-primary" style="font-size:13px;padding:8px 18px" onClick="{{ close }}">完成</button></div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isSug }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(900px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="dialog-title" style="font-size:19px">AI 精简建议</span>
+        <span class="tag tag-neutral">{{ sugSummary }}</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <p style="margin:0;font-size:12.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">只是建议：勾选后点「应用选中」才写回编辑器。公式 / 代码 / 表格 / 图片被遮罩保护，不会被改动。</p>
+      <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;padding-right:2px">
+        <sc-for list="{{ sugRows }}" as="s" hint-placeholder-count="3">
+          <div style="border-radius:20px;background:var(--color-neutral-100);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+            <label style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px;cursor:pointer">
+              <input type="checkbox" checked="{{ s.checked }}" disabled="{{ s.disabled }}" onChange="{{ s.onToggle }}" style="accent-color:var(--color-accent)">
+              <span style="font-weight:700">{{ s.title }}</span>
+              <span style="font-size:12px;color:color-mix(in srgb,var(--color-text) 52%,transparent)">{{ s.chars }}</span>
+              <span class="tag {{ s.tagClass }}">{{ s.status }}</span>
+            </label>
+            <sc-if value="{{ s.showDiff }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent)">原文</span>
+                  <pre style="margin:0;max-height:150px;overflow:auto;padding:9px 11px;border-radius:14px;background:var(--color-surface);font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.65;white-space:pre-wrap;word-break:break-word">{{ s.original }}</pre>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">建议</span>
+                  <pre style="margin:0;max-height:150px;overflow:auto;padding:9px 11px;border-radius:14px;background:var(--color-accent-100);font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.65;white-space:pre-wrap;word-break:break-word">{{ s.suggested }}</pre>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" style="font-size:13px;padding:8px 16px" onClick="{{ discardSug }}">放弃</button>
+        <button class="btn btn-primary" style="font-size:13px;padding:8px 18px" onClick="{{ applyAccepted }}">{{ applyLabel }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isEngine }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(720px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="dialog-title" style="font-size:19px">引擎详情</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:var(--space-3);padding-right:2px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px">
+          <sc-for list="{{ statRows }}" as="row" hint-placeholder-count="7">
+            <div style="padding:10px 12px;border-radius:16px;background:var(--color-neutral-100);display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:11px;color:color-mix(in srgb,var(--color-text) 52%,transparent)">{{ row.label }}</span>
+              <span style="font-family:var(--font-heading),'Noto Sans SC',sans-serif;font-size:17px">{{ row.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:14px 16px;border-radius:20px;background:var(--color-accent-2-100);display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:12.5px;color:var(--color-accent-2-800)">推荐场景 · <span style="font-weight:700">{{ recommendedName }}</span>{{ usedNote }}</span>
+          <span style="font-size:12.5px;line-height:1.6;color:var(--color-accent-2-800);opacity:.85">{{ recommendedReason }}</span>
+        </div>
+        <sc-if value="{{ hasSubjectHint }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:12px 16px;border-radius:20px;background:var(--color-accent-100);font-size:12.5px;line-height:1.6;color:var(--color-accent-800)">{{ subjectHint }}</div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent)">规则记账 · rule trace</span>
+          <sc-for list="{{ traceRows }}" as="t" hint-placeholder-count="4">
+            <div style="display:flex;gap:9px;align-items:baseline;font-size:12.5px;line-height:1.6">
+              <span class="tag {{ t.tagClass }}" style="flex:none">{{ t.kindLabel }}</span>
+              <span><span style="font-weight:600">{{ t.rule }}</span> · {{ t.detail }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:14px 16px;border-radius:20px;background:var(--color-neutral-100);font-size:12.5px;line-height:1.7">
+          <div>结果：<b>{{ fontSizeLabel }}</b> · {{ pagesTag }} · {{ verdictShort }}</div>
+          <div style="color:color-mix(in srgb,var(--color-text) 55%,transparent)">字号二分搜索轨迹：{{ searchTrace }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isDiag }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(880px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="dialog-title" style="font-size:19px">块诊断</span>
+        <span class="tag tag-neutral">{{ diagSummary }}</span>
+        <span class="tag tag-neutral">{{ gridSummary }}</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <sc-for list="{{ fillRows }}" as="f" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:10px;font-size:12.5px">
+            <span style="width:52px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ f.label }}</span>
+            <span style="flex:1;height:10px;border-radius:999px;background:var(--color-neutral-200);overflow:hidden">
+              <span style="display:block;height:100%;border-radius:999px;width:{{ f.width }};background:{{ f.color }}"></span>
+            </span>
+            <span style="width:42px;text-align:right;font-weight:700">{{ f.pct }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex:1;overflow:auto;border-radius:20px;background:var(--color-neutral-100);padding:6px 14px 12px">
+        <table class="table" style="font-size:12.5px">
+          <thead><tr><th>块</th><th>类型</th><th>宽(格)</th><th>页</th><th>高(mm)</th><th>缩放</th><th>公式缩放</th><th>提示</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ diagRows }}" as="b" hint-placeholder-count="6">
+              <tr style="background:{{ b.rowBg }}">
+                <td style="padding:6px 9px">{{ b.title }}</td>
+                <td style="padding:6px 9px">{{ b.kind }}</td>
+                <td style="padding:6px 9px">{{ b.span }}</td>
+                <td style="padding:6px 9px">{{ b.page }}</td>
+                <td style="padding:6px 9px">{{ b.heightMm }}</td>
+                <td style="padding:6px 9px">{{ b.scale }}</td>
+                <td style="padding:6px 9px">{{ b.formulaScale }}</td>
+                <td style="padding:6px 9px">{{ b.note }}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      <span style="font-size:11.5px;color:color-mix(in srgb,var(--color-text) 48%,transparent)">填充条：低于 60% 偏松（灰）、正常（沙绿）、超 100% 有超高块（赤陶）。</span>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isHistory }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:24px;background:color-mix(in srgb,var(--color-neutral-900) 55%,transparent)" onClick="{{ close }}">
+    <div class="dialog elev-lg" style="width:min(780px,100%);max-height:92vh;gap:var(--space-3);padding:var(--space-4)" onClick="{{ stop }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="dialog-title" style="font-size:19px">本次会话历史</span>
+        <span class="tag tag-neutral">{{ historySummary }}</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary" style="font-size:13px;padding:7px 14px" onClick="{{ clearRuns }}">清空</button>
+        <button class="btn btn-secondary btn-icon" onClick="{{ close }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <p style="margin:0;font-size:12.5px;color:color-mix(in srgb,var(--color-text) 58%,transparent)">改一个参数再生成一次即可单变量对照；Δ 是相对上一行的字号差。</p>
+      <div style="flex:1;overflow:auto;border-radius:20px;background:var(--color-neutral-100);padding:6px 14px 12px">
+        <table class="table" style="font-size:12.5px">
+          <thead><tr><th>#</th><th>配置</th><th>字号</th><th>页数</th><th>达标</th><th>填充</th><th>耗时</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ runRows }}" as="r" hint-placeholder-count="3">
+              <tr>
+                <td style="padding:6px 9px">{{ r.i }}</td>
+                <td style="padding:6px 9px">{{ r.config }}</td>
+                <td style="padding:6px 9px"><b>{{ r.fontSize }}</b> <span style="color:{{ r.deltaColor }}">{{ r.delta }}</span></td>
+                <td style="padding:6px 9px">{{ r.pages }}</td>
+                <td style="padding:6px 9px">{{ r.ok }}</td>
+                <td style="padding:6px 9px">{{ r.fill }}</td>
+                <td style="padding:6px 9px">{{ r.secs }}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;demoState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;empty&quot;,&quot;busy&quot;,&quot;success&quot;,&quot;overflow&quot;,&quot;error&quot;],&quot;default&quot;:&quot;success&quot;,&quot;tsType&quot;:&quot;'empty'|'busy'|'success'|'overflow'|'error'&quot;,&quot;section&quot;:&quot;演示状态&quot;},&quot;devMode&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;演示状态&quot;},&quot;showSuggestions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;演示状态&quot;}}">
+class Component extends DCLogic {
+  state = {
+    modal: null,
+    markdown: '# 操作系统 · 期中小抄\n\n## 一、进程与线程\n\n**进程**是资源分配的基本单位，**线程**是 CPU 调度的基本单位。同一进程内线程共享地址空间、打开文件表。\n\n## 二、地址转换\n\n有效访问时间 $EAT = (t_{TLB} + t_{mem}) \\times h + (t_{TLB} + 2t_{mem}) \\times (1-h)$。\n\n$$\nP(S): S \\leftarrow S-1;\\ \\text{if } S<0 \\text{ then block}\n$$\n\n## 三、调度算法对比\n\n| 算法 | 抢占 | 饥饿 | 适用 |\n| --- | --- | --- | --- |\n| FCFS | 否 | 否 | 批处理 |\n| SJF | 可选 | 长作业 | 吞吐优先 |\n| RR | 是 | 否 | 交互式 |\n',
+    raw: '',
+    targetPages: 2,
+    scene: 'auto',
+    subject: '',
+    orientation: 'portrait',
+    marginMm: '10',
+    debug: false,
+    allowReorder: false,
+    stretchFill: true,
+    aiEndpoint: 'https://api.openai.com/v1/chat/completions',
+    aiModel: 'gpt-4o-mini',
+    aiKey: '',
+    fixtureSel: '',
+    accepted: { 'b-3': true, 'b-5': true, 'b-7': false },
+    intakeStatus: null,
+    intakePreview: '',
+    intakeDone: false,
+  };
+
+  SCENES = [
+    { value: 'auto', title: '自动推荐', desc: '按内容画像自动挑场景 —— 应急路径的默认选择' },
+    { value: 'text-cram', title: '极限文本', desc: '背诵型大文本，密度优先，压到可读下限' },
+    { value: 'formula', title: '理科公式', desc: '公式不缩小、宁可留白，正文补回版面' },
+    { value: 'code', title: '代码密集', desc: '编程课：代码块不折行、不缩放' },
+    { value: 'visual', title: '图文混排', desc: '截图多的课：图片等比缩放优先' },
+    { value: 'balanced', title: '均衡默认', desc: '不偏不倚，密度与可读性折中' },
+  ];
+  SUBJECTS = [
+    { value: '', label: '不指定' },
+    { value: 'calculus', label: '微积分 / 高数' },
+    { value: 'os', label: '操作系统' },
+    { value: 'semiconductor', label: '半导体 / 电路' },
+    { value: 'politics', label: '政治 / 毛概 / 马原' },
+  ];
+  FIXTURES = [
+    { name: 'os-midterm.md', label: 'os-midterm.md（38KB）' },
+    { name: 'calculus-cram.md', label: 'calculus-cram.md（52KB）' },
+    { name: 'politics-outline.md', label: 'politics-outline.md（21KB）' },
+  ];
+
+  makeBlocks(seed) {
+    const tones = ['var(--color-neutral-200)', 'var(--color-accent-2-200)', 'var(--color-accent-200)'];
+    const spans = [12, 6, 6, 4, 4, 4, 7, 5, 6, 6, 12, 5, 7];
+    const lineCounts = [3, 4, 2, 3, 2, 4, 3, 2, 4, 3, 2, 3, 4];
+    const widths = ['92%', '78%', '86%', '64%', '95%', '71%'];
+    return spans.map((span, i) => ({
+      span,
+      tone: tones[(i + seed) % 3],
+      lines: Array.from({ length: lineCounts[(i + seed) % lineCounts.length] }, (_, j) => ({
+        w: widths[(i + j + seed) % widths.length],
+      })),
+    }));
+  }
+
+  set(k) {
+    return (e) => this.setState({ [k]: e.target.value });
+  }
+  toggle(k) {
+    return (e) => this.setState({ [k]: e.target.checked });
+  }
+  open(m) {
+    return () => this.setState({ modal: m });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const p = this.props;
+    const demo = p.demoState ?? 'success';
+    const devMode = p.devMode ?? true;
+    const hasSuggestions = (p.showSuggestions ?? true) && demo !== 'busy';
+    const busy = demo === 'busy';
+    const hasError = demo === 'error';
+    const ok = demo === 'success';
+    const hasResult = ok || demo === 'overflow';
+
+    const fontSize = ok ? 9.5 : 8;
+    const pages = ok ? 2 : 3;
+    const fill = ok ? 87 : 96;
+
+    const statRows = [
+      { label: '正文字数', value: '4 218 字' },
+      { label: '独立公式', value: '6' },
+      { label: '行内公式', value: '19' },
+      { label: '图片块', value: '2' },
+      { label: '表格', value: '3' },
+      { label: '代码块', value: '1' },
+      { label: '内容块', value: '14 块' },
+    ];
+
+    const traceRows = [
+      { kindLabel: '硬', tagClass: 'tag-accent', rule: 'H-FORMULA-NOSHRINK', detail: '检出 6 个独立公式：公式缩放下限锁 ×1.0，允许留白' },
+      { kindLabel: '软', tagClass: 'tag-neutral', rule: 'S-DENSITY-CRAM', detail: '正文占比 78% → 密度档 cram，行高 1.15' },
+      { kindLabel: '硬', tagClass: 'tag-accent', rule: 'H-TABLE-KEEP', detail: '学科 os：对比表整块不缩小、不跨栏拆分' },
+      { kindLabel: '裁决', tagClass: 'tag-accent-2', rule: 'A-ATOM-CONFLICT', detail: '图片与公式同时刚性：优先保公式，图片允许等比缩到 ×0.82' },
+    ];
+
+    const warnRows = ok
+      ? [{ text: '宽内容缩到可读下限以下：「三、调度算法对比」—— 建议拆表或换横版' }]
+      : [
+          { text: '最小字号仍超出目标页数，当前是尽力结果：请增加页数或用「AI 精简」删内容' },
+          { text: '超高块（会被截断）：「二、地址转换 · 推导」' },
+          { text: '多类刚性原子冲突：图片让位于公式，图片已缩到 ×0.82' },
+        ];
+
+    const fillRows = (ok ? [91, 83] : [99, 104, 62]).map((v, i) => ({
+      label: '第 ' + (i + 1) + ' 页',
+      pct: v + '%',
+      width: Math.min(v, 100) + '%',
+      color: v > 100 ? 'var(--color-accent-600)' : v < 60 ? 'var(--color-neutral-500)' : 'var(--color-accent-2-500)',
+    }));
+
+    const diagRows = [
+      { title: '一、进程与线程', kind: '文', span: 12, page: 1, heightMm: 41.2, scale: '—', formulaScale: '—', note: '', over: false, low: false },
+      { title: '二、地址转换', kind: '文', span: 7, page: 1, heightMm: 58.6, scale: '×0.94', formulaScale: '—', note: ok ? '↗+1.5pt' : '⛔ 超高截断', over: !ok, low: false },
+      { title: '三、调度算法对比', kind: '文', span: 5, page: 1, heightMm: 47.0, scale: '×0.71', formulaScale: '—', note: '⚠️ 缩过可读限', over: false, low: true },
+      { title: '四、同步原语', kind: '文', span: 6, page: 2, heightMm: 52.3, scale: '—', formulaScale: '×1.00', note: '', over: false, low: false },
+      { title: '五、死锁四条件', kind: '文', span: 6, page: 2, heightMm: 35.8, scale: '—', formulaScale: '—', note: '↗+2pt', over: false, low: false },
+      { title: '六、页面置换截图', kind: '图', span: 4, page: 2, heightMm: 29.4, scale: '×0.82', formulaScale: '—', note: '', over: false, low: false },
+    ].map((b) => ({
+      ...b,
+      rowBg: b.over ? 'var(--color-accent-200)' : b.low ? 'var(--color-accent-2-200)' : 'transparent',
+    }));
+
+    const runs = [
+      { config: '自动 · 目标2页 · 竖', fontSize: 9, pages: 2, ok: true, fill: 82, secs: '4.1' },
+      { config: 'os · 目标2页 · 竖 · 边距6mm', fontSize: 9.5, pages: 2, ok: true, fill: 87, secs: '3.8' },
+      { config: 'os · 目标2页 · 竖 · 乱序', fontSize: 10, pages: 2, ok: true, fill: 91, secs: '4.4' },
+    ];
+    const runRows = runs.map((r, i) => {
+      const prev = i > 0 ? runs[i - 1] : null;
+      const d = prev ? Math.round((r.fontSize - prev.fontSize) * 10) / 10 : 0;
+      return {
+        i: i + 1,
+        config: r.config,
+        fontSize: r.fontSize + 'pt',
+        delta: d === 0 ? '' : d > 0 ? '▲+' + d : '▼' + d,
+        deltaColor: d > 0 ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)',
+        pages: r.pages,
+        ok: r.ok ? '✓' : '✗',
+        fill: r.fill + '%',
+        secs: r.secs + 's',
+      };
+    });
+
+    const sugs = [
+      {
+        blockId: 'b-3',
+        title: '一、进程与线程',
+        charsBefore: 312,
+        charsAfter: 188,
+        applicable: true,
+        status: '✓ 可精简',
+        tagClass: 'tag-accent-2',
+        original: '进程是操作系统进行资源分配和调度的基本单位，它是程序执行时的一个实例。线程则是 CPU 调度和分派的基本单位，它是比进程更小的能独立运行的基本单位。',
+        suggested: '进程 = 资源分配单位（程序运行实例）\n线程 = CPU 调度单位，比进程更小\n同进程线程共享地址空间、文件表',
+      },
+      {
+        blockId: 'b-5',
+        title: '五、死锁四条件',
+        charsBefore: 268,
+        charsAfter: 141,
+        applicable: true,
+        status: '✓ 可精简',
+        tagClass: 'tag-accent-2',
+        original: '产生死锁必须同时满足以下四个必要条件：互斥条件、请求并保持条件、不可剥夺条件以及环路等待条件，破坏其中任意一个即可预防死锁。',
+        suggested: '死锁四条件（同时满足）：互斥 / 请求并保持 / 不可剥夺 / 环路等待\n破坏任一即可预防',
+      },
+      {
+        blockId: 'b-7',
+        title: '二、地址转换',
+        charsBefore: 204,
+        charsAfter: 204,
+        applicable: false,
+        status: '⚠ 改写后公式占位符缺失，已拦截',
+        tagClass: 'tag-accent',
+        original: '',
+        suggested: '',
+      },
+    ];
+    const sugRows = sugs.map((x) => ({
+      title: x.title,
+      chars: x.applicable ? x.charsBefore + '→' + x.charsAfter + ' 字' : '—',
+      status: x.status,
+      tagClass: x.tagClass,
+      checked: !!s.accepted[x.blockId] && x.applicable,
+      disabled: !x.applicable,
+      showDiff: x.applicable,
+      original: x.original,
+      suggested: x.suggested,
+      onToggle: (e) =>
+        this.setState((st) => ({ accepted: { ...st.accepted, [x.blockId]: e.target.checked } })),
+    }));
+    const acceptedCount = sugs.filter((x) => x.applicable && s.accepted[x.blockId]).length;
+
+    const current = this.SCENES.find((o) => o.value === s.scene) || this.SCENES[0];
+    const sceneCards = this.SCENES.map((c) => ({
+      title: c.title,
+      desc: c.desc,
+      check: c.value === s.scene ? '✓' : '',
+      bg: c.value === s.scene ? 'var(--color-accent-100)' : 'var(--color-neutral-100)',
+      border: c.value === s.scene ? 'var(--color-accent)' : 'transparent',
+      onPick: () => this.setState({ scene: c.value }),
+    }));
+
+    return {
+      devMode,
+      busy,
+      hasError,
+      errorMsg: '排版失败：HTTP 502 —— 渲染服务无响应（POST /api/scene）。请确认后端已启动，或稍后重试。',
+      hasResult,
+      noResult: !hasResult,
+      hasSuggestions,
+
+      markdown: s.markdown,
+      raw: s.raw,
+      onMarkdown: this.set('markdown'),
+      onRaw: this.set('raw'),
+      onPaste: () => {},
+      charLabel: s.markdown.length + ' 字符',
+      targetPages: String(s.targetPages),
+      onPages: (e) => this.setState({ targetPages: Math.min(50, Math.max(1, parseInt(e.target.value) || 1)) }),
+      decPages: () => this.setState((st) => ({ targetPages: Math.max(1, st.targetPages - 1) })),
+      incPages: () => this.setState((st) => ({ targetPages: Math.min(50, st.targetPages + 1) })),
+      sceneLabel: current.title,
+      marginLabel: '边距 ' + s.marginMm + 'mm',
+      oriLabel: s.orientation === 'portrait' ? '竖版' : '横版',
+      runLabel: busy ? '排版中…' : '生成 PDF',
+      runScene: () => {},
+      runCompress: this.open('sug'),
+      pickImage: () => this.fileEl && this.fileEl.click(),
+      fileRef: (el) => (this.fileEl = el),
+      onFile: () => {},
+      download: (e) => e.stopPropagation(),
+
+      statRows,
+      fixtures: this.FIXTURES,
+      fixtureSel: s.fixtureSel,
+      onFixture: this.set('fixtureSel'),
+      loadFixture: () => {},
+
+      verdictBg: ok ? 'var(--color-accent-2-100)' : 'var(--color-accent-100)',
+      verdictInk: ok ? 'var(--color-accent-2-800)' : 'var(--color-accent-800)',
+      verdictTitle: ok ? '已排进 ' + pages + ' 页 · 字号 ' + fontSize + 'pt' : '目标 ' + s.targetPages + ' 页塞不下',
+      verdictSub: ok
+        ? '可以下载打印了'
+        : '目前最优 ' + pages + ' 页 / ' + fontSize + 'pt —— 加页数，或用「AI 精简」删内容再试',
+      verdictShort: ok ? '达标 ✓' : '未达标',
+      warnRows,
+
+      pagesTag: pages + ' 页 · ' + fontSize + 'pt',
+      pagesNum: pages,
+      fontSizeLabel: fontSize + 'pt',
+      fileName: '操作系统-期中小抄.pdf',
+      thumbBlocks: this.makeBlocks(0).slice(0, 9),
+      pages: Array.from({ length: pages }, (_, i) => ({
+        label: '第 ' + (i + 1) + ' / ' + pages + ' 页',
+        blocks: this.makeBlocks(i),
+      })),
+
+      diagSummary: hasResult ? '总填充 ' + fill + '% · 14 块' : '生成后可见',
+      gridSummary: '网格 24 列 · 格 8.1mm · 留白 2.4mm',
+      historySummary: runs.length + ' 次生成',
+      sugSummary: '共 14 块 · 可精简 ' + acceptedCount + ' 块 · 4218→3641 字',
+      sugCount: acceptedCount,
+      applyLabel: '应用选中（' + acceptedCount + ' 块）',
+      recommendedName: '理科公式',
+      usedNote: s.scene === 'auto' ? '' : '；实际使用：' + current.title,
+      recommendedReason: '独立公式 6 个 + 行内公式 19 个，公式密度触发理科档：公式不缩小、宁可留白，正文走 cram 密度补回版面。',
+      hasSubjectHint: s.subject !== 'os',
+      subjectHint: '💡 检测到可能是「操作系统」（命中：进程、线程、死锁）—— 在「排版参数」里选中学科后重新生成可启用对应规则。',
+      traceRows,
+      searchTrace: '14pt→5页，11pt→3页，9.5pt→2页 ✓',
+
+      fillRows,
+      diagRows,
+      runRows,
+      clearRuns: () => {},
+      sugRows,
+      applyAccepted: this.open(null),
+      discardSug: this.open(null),
+
+      sceneCards,
+      subjectOptions: this.SUBJECTS,
+      subject: s.subject,
+      onSubject: this.set('subject'),
+      isPortrait: s.orientation === 'portrait',
+      isLandscape: s.orientation === 'landscape',
+      onPortrait: () => this.setState({ orientation: 'portrait' }),
+      onLandscape: () => this.setState({ orientation: 'landscape' }),
+      marginMm: s.marginMm,
+      onMargin: this.set('marginMm'),
+      debug: s.debug,
+      allowReorder: s.allowReorder,
+      stretchFill: s.stretchFill,
+      onDebug: this.toggle('debug'),
+      onReorder: this.toggle('allowReorder'),
+      onStretch: this.toggle('stretchFill'),
+      applyAndRun: this.open(null),
+
+      aiEndpoint: s.aiEndpoint,
+      aiModel: s.aiModel,
+      aiKey: s.aiKey,
+      onEndpoint: this.set('aiEndpoint'),
+      onModel: this.set('aiModel'),
+      onKey: this.set('aiKey'),
+
+      intakeStatus: s.intakeStatus,
+      intakeIdle: !s.intakeStatus,
+      intakePreview: s.intakePreview,
+      hasIntakePreview: !!s.intakePreview,
+      intakeDone: s.intakeDone,
+      runIntake: () => this.startIntake(),
+      adoptOnly: () => this.setState({ modal: null }),
+      adoptAndRun: () => this.setState({ modal: null }),
+
+      isPdf: s.modal === 'pdf',
+      isIntake: s.modal === 'intake',
+      isAdvanced: s.modal === 'advanced',
+      isAi: s.modal === 'ai',
+      isSug: s.modal === 'sug',
+      isEngine: s.modal === 'engine',
+      isDiag: s.modal === 'diag',
+      isHistory: s.modal === 'history',
+      openPdf: this.open('pdf'),
+      openIntake: this.open('intake'),
+      openAdvanced: this.open('advanced'),
+      openAi: this.open('ai'),
+      openSug: this.open('sug'),
+      openEngine: this.open('engine'),
+      openDiag: this.open('diag'),
+      openHistory: this.open('history'),
+      close: this.open(null),
+      stop: (e) => e.stopPropagation(),
+    };
+  }
+
+  /** 模拟 SSE 流式输出（真实实现：/api/ai/structurize） */
+  startIntake() {
+    const target =
+      '# 操作系统 · 期中复习\n\n## 一、进程与线程\n\n- 进程 = 资源分配单位（程序运行实例）\n- 线程 = CPU 调度单位，同进程共享地址空间、打开文件表\n\n## 二、地址转换\n\n有效访问时间 $EAT = (t_{TLB}+t_{mem})h + (t_{TLB}+2t_{mem})(1-h)$\n\n## 三、调度算法\n\n| 算法 | 抢占 | 饥饿 |\n| --- | --- | --- |\n| FCFS | 否 | 否 |\n| RR | 是 | 否 |\n';
+    clearInterval(this._t);
+    this.setState({ intakeStatus: 'AI 转换中…', intakePreview: '', intakeDone: false });
+    let i = 0;
+    this._t = setInterval(() => {
+      i += 16;
+      if (i >= target.length) {
+        clearInterval(this._t);
+        this.setState({ intakePreview: target, intakeStatus: null, intakeDone: true });
+      } else {
+        this.setState({ intakePreview: target.slice(0, i) });
+      }
+    }, 55);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this._t);
+  }
+}
+
+</script>
+</body>
+</html>
