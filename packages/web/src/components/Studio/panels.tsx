@@ -1,8 +1,8 @@
 /**
- * 右栏栈式面板（精简 / 诊断 / 历史 / AI 设置）——点模块卡滑入,← 返回卡片列表。
+ * 居中弹窗的面板内容（精简 / 诊断 / 历史 / AI 设置）——由 StudioRail 的瓦片打开。
  * 精简作用域 = 单个已转换 source（spec 已拍;组合级 range 映射是坑,二期再说）。
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../../api';
 import type { AiCompressResponse, AiCompressSummary, BlockSuggestion } from '../../types';
 import { AI_DEFAULTS, AI_KEYS, byokProvider, lsGet, lsSet } from './aiConfig';
@@ -95,8 +95,7 @@ export function CompressPanel() {
 
   return (
     <div style={{ fontSize: 13 }}>
-      <b>✨ AI 精简</b>
-      <div style={{ color: 'var(--color-text-secondary)', margin: '4px 0 8px' }}>
+      <div className="text-muted" style={{ margin: '4px 0 8px' }}>
         把一份材料的叙述性文字改写成要点式——只出建议，勾选后「应用」才写回。公式/代码/表格/图片不会被动。
       </div>
       {candidates.length === 0 ? (
@@ -115,7 +114,7 @@ export function CompressPanel() {
             ))}
           </select>
           <div>
-            <button type="button" className="hh-btn-primary" onClick={() => void run()} disabled={busy || !sourceId}>
+            <button type="button" className="btn btn-primary" onClick={() => void run()} disabled={busy || !sourceId}>
               {busy ? 'AI 精简中…' : '开始精简'}
             </button>
           </div>
@@ -127,7 +126,7 @@ export function CompressPanel() {
           共 {summary.total} 块 · 可精简 {summary.compressed} 块 · 全接受口径 {summary.charsBefore}→
           {summary.charsAfter} 字
           <div style={{ marginTop: 4 }}>
-            <button type="button" className="hh-btn-primary" onClick={apply} disabled={acceptedCount === 0}>
+            <button type="button" className="btn btn-primary" onClick={apply} disabled={acceptedCount === 0}>
               应用选中（{acceptedCount} 块）
             </button>
           </div>
@@ -180,7 +179,6 @@ export function DiagnosticsPanel() {
   const d = r.diagnostics;
   return (
     <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-      <b>🔍 最近一次生成</b>
       <div>
         正文≈{r.stats.charCount}字 · 公式{r.stats.displayFormulaCount + r.stats.inlineFormulaCount} · 表格
         {r.stats.tableCount} · 代码块{r.stats.codeBlockCount} · 共{r.stats.blockCount}块
@@ -256,7 +254,7 @@ export function HistoryPanel() {
   }
   return (
     <div style={{ fontSize: 12 }}>
-      <b>🕘 会话历史（{state.runs.length} 次）</b>
+      <div className="text-muted">本次会话共 {state.runs.length} 次生成;改一个参数再生成即可逐行对照</div>
       <div style={{ maxHeight: 400, overflow: 'auto', marginTop: 6 }}>
         <table className="hh-mini-table">
           <thead>
@@ -295,34 +293,87 @@ export function HistoryPanel() {
   );
 }
 
+interface ProviderPreset {
+  id: string;
+  name: string;
+  endpoint: string;
+  defaultModel: string;
+  keyUrl: string;
+}
+
 export function AiSettingsPanel() {
   // localStorage key 与旧界面共享——两边填一次就都能用；key 只存本地浏览器
   const [endpoint, setEndpoint] = useState(() => lsGet(AI_KEYS.endpoint, AI_DEFAULTS.endpoint));
   const [model, setModel] = useState(() => lsGet(AI_KEYS.model, AI_DEFAULTS.model));
   const [key, setKey] = useState(() => lsGet(AI_KEYS.key));
+  const [presets, setPresets] = useState<ProviderPreset[]>([]);
 
-  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: 5, marginTop: 2 };
+  // 服务商预设（GET /api/ai/providers,与服务端 BYOK 白名单同源）:选中即填端点+模型,key 自己填
+  useEffect(() => {
+    apiFetch('/api/ai/providers')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.providers) setPresets(d.providers as ProviderPreset[]);
+      })
+      .catch(() => {});
+  }, []);
+
+  const currentPreset = presets.find((p) => p.endpoint === endpoint);
+
+  const applyPreset = (id: string) => {
+    const preset = presets.find((p) => p.id === id);
+    if (!preset) return;
+    setEndpoint(preset.endpoint);
+    setModel(preset.defaultModel);
+    lsSet(AI_KEYS.endpoint, preset.endpoint);
+    lsSet(AI_KEYS.model, preset.defaultModel);
+  };
+
   return (
     <div style={{ fontSize: 13 }}>
-      <b>⚙️ AI 设置（BYOK）</b>
-      <div style={{ color: 'var(--color-text-secondary)', margin: '4px 0 8px' }}>
+      <div className="text-muted" style={{ margin: '4px 0 8px' }}>
         不填 = 用服务器统一配置的 AI（部署者提供）。填了就用你自己的 key——存本地浏览器，请求时才过后端内存，不落服务器。
       </div>
-      <label>
-        端点（OpenAI 兼容 /chat/completions）
-        <input type="text" value={endpoint} style={field} placeholder={AI_DEFAULTS.endpoint}
+      {presets.length > 0 && (
+        <div className="field">
+          <label>服务商（选中自动填端点和默认模型）</label>
+          <select
+            className="input"
+            value={currentPreset?.id ?? ''}
+            onChange={(e) => applyPreset(e.target.value)}
+          >
+            <option value="">自定义端点…</option>
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {currentPreset && (
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+              还没有 key？
+              <a href={currentPreset.keyUrl} target="_blank" rel="noreferrer">
+                去 {currentPreset.name} 申请 →
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="field">
+        <label>端点（OpenAI 兼容 /chat/completions）</label>
+        <input type="text" className="input" value={endpoint} placeholder={AI_DEFAULTS.endpoint}
           onChange={(e) => { setEndpoint(e.target.value); lsSet(AI_KEYS.endpoint, e.target.value); }} />
-      </label>
-      <label style={{ display: 'block', marginTop: 8 }}>
-        模型
-        <input type="text" value={model} style={field} placeholder={AI_DEFAULTS.model}
+      </div>
+      <div className="field">
+        <label>模型</label>
+        <input type="text" className="input" value={model} placeholder={AI_DEFAULTS.model}
           onChange={(e) => { setModel(e.target.value); lsSet(AI_KEYS.model, e.target.value); }} />
-      </label>
-      <label style={{ display: 'block', marginTop: 8 }}>
-        API Key
-        <input type="password" value={key} style={field} placeholder="sk-..."
+      </div>
+      <div className="field">
+        <label>API Key</label>
+        <input type="password" className="input" value={key} placeholder="sk-..."
           onChange={(e) => { setKey(e.target.value); lsSet(AI_KEYS.key, e.target.value); }} />
-      </label>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 /**
- * 「+ 添加材料」三入口：粘贴文本（内联弹层）/ 上传文件（走 /api/import/document）/
- * 网页 URL（二期，置灰）。拖文件进页面任意位置由外层 DocumentDropSurface 接住,不经此处。
+ * 「+ 添加材料」三入口：粘贴文本（内联区）/ 上传文件（/api/import/document）/
+ * 网页 URL（/api/import/url,正文抽取后落成生料卡）。
+ * 拖文件进页面任意位置由外层 DocumentDropSurface 接住,不经此处。
  */
 import { useRef, useState } from 'react';
+import { apiFetch } from '../../api';
 import { importDocument, unsupportedFileReason } from '../../lib/documentImport';
 import { makeSource, useStudio } from './useStudioStore';
 
@@ -41,22 +43,71 @@ function fileToDataUri(file: File): Promise<string> {
 export default function AddSourceMenu() {
   const { dispatch } = useStudio();
   const [open, setOpen] = useState(false);
-  const [pasting, setPasting] = useState(false);
+  const [mode, setMode] = useState<'paste' | 'url' | null>(null);
   const [pasteText, setPasteText] = useState('');
+  const [urlText, setUrlText] = useState('');
+  const [fetching, setFetching] = useState(false);
   const [uploading, setUploading] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const closeAll = () => {
+    setOpen(false);
+    setMode(null);
+  };
 
   const addPaste = () => {
     if (!pasteText.trim()) return;
     dispatch({ type: 'add_source', source: makeSource({ kind: 'paste', raw: pasteText }) });
     setPasteText('');
-    setPasting(false);
-    setOpen(false);
+    closeAll();
+  };
+
+  /** 网页 URL → /api/import/url（SSRF/大小/超时闸在服务端）→ 生料卡（可再走 AI 转换） */
+  const addUrl = async () => {
+    const url = urlText.trim();
+    if (!url || fetching) return;
+    setFetching(true);
+    try {
+      const resp = await apiFetch('/api/import/url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as {
+        markdown?: string;
+        summary?: { originalName: string; characterCount: number; sourceUrl?: string };
+        error?: string;
+      };
+      if (!resp.ok || !data.markdown || !data.summary) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+      dispatch({
+        type: 'add_source',
+        source: makeSource({
+          kind: 'url',
+          raw: data.markdown,
+          title: data.summary.originalName,
+          importSummary: [
+            '网页',
+            `${data.summary.characterCount.toLocaleString()} 字`,
+            data.summary.sourceUrl ? new URL(data.summary.sourceUrl).hostname : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        }),
+      });
+      setUrlText('');
+      closeAll();
+    } catch (e) {
+      setErrors((cur) => [...cur, `网页抓取失败：${e instanceof Error ? e.message : String(e)}`]);
+    } finally {
+      setFetching(false);
+    }
   };
 
   const handleFiles = async (files: File[]) => {
-    setOpen(false);
+    closeAll();
     for (const file of files) {
       // 图片：转 data URI 直接就是合法 Markdown，免 AI（与旧界面「图片直接插入」同口径）
       if (file.type.startsWith('image/')) {
@@ -97,7 +148,7 @@ export default function AddSourceMenu() {
           kind: 'file',
           raw: outcome.markdown,
           title: outcome.summary.originalName.replace(/\.(docx|pdf)$/i, ''),
-          importSummary: summarize(outcome.summary.kind, outcome.summary),
+          importSummary: summarize(outcome.summary.kind as 'docx' | 'pdf', outcome.summary),
         }),
       });
     }
@@ -105,24 +156,24 @@ export default function AddSourceMenu() {
 
   return (
     <div className="hh-add-menu">
-      <button type="button" className="hh-add-trigger" onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="btn btn-primary hh-add-trigger" onClick={() => setOpen((v) => !v)}>
         ＋ 添加材料
       </button>
-      {open && !pasting && (
+      {open && mode === null && (
         <div className="hh-add-options">
-          <button type="button" onClick={() => setPasting(true)}>
+          <button type="button" onClick={() => setMode('paste')}>
             📋 粘贴文本 <small>（课件/聊天记录/任意生料）</small>
           </button>
           <button type="button" onClick={() => inputRef.current?.click()}>
             📄 上传文件 <small>（.docx / 文字型 PDF / 图片）</small>
           </button>
-          <button type="button" disabled title="即将支持">
-            🔗 网页 URL <small>（即将支持）</small>
+          <button type="button" onClick={() => setMode('url')}>
+            🔗 网页 URL <small>（抓取正文,动态渲染页可能抓不到）</small>
           </button>
         </div>
       )}
-      {pasting && (
-        <div className="hh-paste-modal" style={{ marginTop: 6 }}>
+      {mode === 'paste' && (
+        <div className="hh-paste-modal" style={{ marginTop: 8 }}>
           <textarea
             autoFocus
             rows={6}
@@ -130,18 +181,34 @@ export default function AddSourceMenu() {
             onChange={(e) => setPasteText(e.target.value)}
             placeholder="把原始材料粘到这里——不需要是 Markdown"
           />
-          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            <button type="button" className="hh-btn-primary" onClick={addPaste} disabled={!pasteText.trim()}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button type="button" className="btn btn-primary" onClick={addPaste} disabled={!pasteText.trim()}>
               添加为材料
             </button>
-            <button
-              type="button"
-              className="hh-btn-secondary"
-              onClick={() => {
-                setPasting(false);
-                setOpen(false);
-              }}
-            >
+            <button type="button" className="btn btn-secondary" onClick={closeAll}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+      {mode === 'url' && (
+        <div style={{ marginTop: 8 }}>
+          <input
+            autoFocus
+            type="url"
+            className="hh-url-input"
+            value={urlText}
+            onChange={(e) => setUrlText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void addUrl();
+            }}
+            placeholder="https://…（公开网页;需登录/纯脚本渲染的页面请直接复制文字粘贴）"
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button type="button" className="btn btn-primary" onClick={() => void addUrl()} disabled={fetching || !urlText.trim()}>
+              {fetching ? '抓取中…' : '抓取网页'}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={closeAll} disabled={fetching}>
               取消
             </button>
           </div>
@@ -159,16 +226,17 @@ export default function AddSourceMenu() {
         }}
       />
       {uploading.map((name) => (
-        <div key={name} style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+        <div key={name} style={{ fontSize: 12, marginTop: 6 }} className="text-muted">
           ⏳ {name} 导入中…
         </div>
       ))}
       {errors.map((msg, i) => (
-        <div key={i} style={{ fontSize: 12, color: '#b91c1c', marginTop: 4 }}>
+        <div key={i} className="hh-msg-err" style={{ fontSize: 12, marginTop: 6 }}>
           {msg}{' '}
           <button
             type="button"
-            style={{ border: 'none', background: 'none', color: '#64748b' }}
+            style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+            className="text-muted"
             onClick={() => setErrors((cur) => cur.filter((_, j) => j !== i))}
           >
             ×

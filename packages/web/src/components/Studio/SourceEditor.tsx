@@ -22,7 +22,7 @@ export default function SourceEditor({ source }: { source: Source }) {
   };
 
   return (
-    <div className="studio-col">
+    <div className="studio-col is-mid">
       <div className="studio-col-head">
         <button
           type="button"
@@ -39,9 +39,9 @@ export default function SourceEditor({ source }: { source: Source }) {
           onChange={(e) =>
             dispatch({ type: 'update_source', id: source.id, patch: { title: e.target.value } })
           }
-          style={{ fontSize: 15, fontWeight: 700, padding: '6px 8px' }}
+          
         />
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+        <div className="text-muted" style={{ fontSize: 12 }}>
           {source.meta.importSummary ?? `${source.meta.charCount.toLocaleString()} 字`}
           {' · '}
           {editingConverted
@@ -58,7 +58,7 @@ export default function SourceEditor({ source }: { source: Source }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
-            className="hh-btn-primary"
+            className="btn btn-primary"
             disabled={state.converting || !source.raw.trim()}
             title="用 AI 把这份材料的原文整理成标准 Markdown（过程在对话流里）"
             onClick={() => {
@@ -71,7 +71,7 @@ export default function SourceEditor({ source }: { source: Source }) {
           {!editingConverted && (
             <button
               type="button"
-              className="hh-btn-secondary"
+              className="btn btn-secondary"
               disabled={!source.raw.trim()}
               title="不经 AI，原样当成品参与排版（没配 AI key 时的直通路径）"
               onClick={() => skipAi(source)}
@@ -81,7 +81,7 @@ export default function SourceEditor({ source }: { source: Source }) {
           )}
           <button
             type="button"
-            className="hh-btn-secondary"
+            className="btn btn-secondary"
             style={{ marginLeft: 'auto', color: '#b91c1c' }}
             onClick={() => {
               if (window.confirm(`删除材料《${source.title}》？`)) {

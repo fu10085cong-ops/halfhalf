@@ -1,11 +1,12 @@
 /**
- * 左栏材料卡：启停勾选 + 图标 + 标题 + 字数/来源 + 状态徽章。
+ * 左栏材料卡：启停勾选 + 图标 + 标题 + 字数/来源 + 状态徽章（Organic .tag）。
  * 点卡片本体 → 中栏切换为该 source 的编辑视图。
  */
 import { useStudio, type Source } from './useStudioStore';
 
 function sourceIcon(source: Source): string {
   if (source.kind === 'paste') return '📋';
+  if (source.kind === 'url') return '🔗';
   const summary = source.meta.importSummary ?? '';
   if (summary.startsWith('PDF')) return 'PDF';
   if (summary.startsWith('Word')) return 'W';
@@ -38,9 +39,9 @@ export default function SourceCard({ source }: { source: Source }) {
         </small>
         <br />
         {source.status === 'raw' ? (
-          <span className="hh-source-badge is-raw">⚠ 生料待转换</span>
+          <span className="tag tag-accent">⚠ 生料待转换</span>
         ) : (
-          <span className="hh-source-badge is-converted">✓ 已转换</span>
+          <span className="tag tag-accent-2">✓ 已转换</span>
         )}
       </span>
     </div>

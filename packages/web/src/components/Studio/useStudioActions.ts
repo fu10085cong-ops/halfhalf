@@ -241,5 +241,69 @@ export function useStudioActions() {
     }
   };
 
-  return { convertAllRaw, convertSingle, skipAi, generate };
+  /** 自由对话（/api/ai/chat SSE）：材料 = enabled sources 拼接;历史 = 之前完成的 chat 轮 */
+  const sendChat = async (text: string): Promise<void> => {
+    const content = text.trim();
+    if (!content || state.chatting) return;
+    // 只有 kind:'chat' 进对话历史——转换/生成的动作卡与 AI 无对话语义
+    const history = state.messages
+      .filter((m) => m.kind === 'chat' && (m.role === 'user' || (m.role === 'assistant' && m.phase === 'done')))
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.text ?? '' }))
+      .filter((m) => m.content.trim());
+    dispatch({
+      type: 'add_message',
+      message: { id: newId(), role: 'user', kind: 'chat', text: content },
+    });
+    const cardId = newId();
+    dispatch({
+      type: 'add_message',
+      message: { id: cardId, role: 'assistant', kind: 'chat', phase: 'working', preview: '' },
+    });
+    dispatch({ type: 'set_chatting', value: true });
+    try {
+      const resp = await apiFetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...history, { role: 'user', content }],
+          context: combineEnabledMarkdown(state.sources),
+          provider: byokProvider() ?? undefined,
+        }),
+      });
+      if (!resp.ok || !resp.headers.get('content-type')?.includes('event-stream')) {
+        const data = (await resp.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+      let acc = '';
+      let reply: string | null = null;
+      let streamError: string | null = null;
+      await consumeSse(resp, (event, data) => {
+        if (event === 'delta') {
+          acc += String(data.text ?? '');
+          dispatch({ type: 'update_message', id: cardId, patch: { preview: acc } });
+        } else if (event === 'result') {
+          reply = String(data.reply ?? '');
+          dispatch({
+            type: 'update_message',
+            id: cardId,
+            patch: { phase: 'done', text: reply, preview: undefined },
+          });
+        } else if (event === 'error') {
+          streamError = String(data.error ?? '未知错误');
+        }
+      });
+      if (streamError) throw new Error(streamError);
+      if (reply === null) throw new Error('对话中断，未收到完整回复，请重试');
+    } catch (e) {
+      dispatch({
+        type: 'update_message',
+        id: cardId,
+        patch: { phase: 'error', error: e instanceof Error ? e.message : String(e) },
+      });
+    } finally {
+      dispatch({ type: 'set_chatting', value: false });
+    }
+  };
+
+  return { convertAllRaw, convertSingle, skipAi, generate, sendChat };
 }

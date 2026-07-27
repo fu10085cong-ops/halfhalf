@@ -65,8 +65,9 @@ function StudioShell() {
       {(uploadPanel) => (
         <div className="studio-root">
           <header className="studio-header">
-            <h1>📄 HalfHalf Studio</h1>
-            <span className="studio-tagline">半开卷小抄生成器 —— 从材料到可打印 PDF</span>
+            <span className="studio-badge" aria-hidden="true">半</span>
+            <h1>HalfHalf</h1>
+            <span className="studio-tagline">半开卷小抄工作台 —— 从材料到可打印 PDF</span>
             <a className="studio-back" href={window.location.pathname}>
               返回旧版 ↩
             </a>

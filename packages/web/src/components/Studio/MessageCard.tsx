@@ -61,18 +61,31 @@ function PdfCard({ msg }: { msg: StudioMessage }) {
       <div className="hh-msg-actions">
         <button
           type="button"
-          className="hh-btn-primary"
+          className="btn btn-primary"
           onClick={() =>
             dispatch({ type: 'set_overlay', overlay: { url: p.pdfUrl, fileName: p.fileName } })
           }
         >
           打开预览
         </button>
-        <a href={p.pdfUrl} download={p.fileName} className="hh-btn-secondary" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <a href={p.pdfUrl} download={p.fileName} className="btn btn-secondary" style={{ textDecoration: 'none' }}>
           下载 {p.fileName}
         </a>
       </div>
     </>
+  );
+}
+
+/** 自由对话的 AI 回复卡：流式期间显示缓冲，完成后显示完整 Markdown 文本 */
+function ChatReplyCard({ msg }: { msg: StudioMessage }) {
+  if (msg.phase === 'error') {
+    return <span className="hh-msg-err">对话出错：{msg.error}</span>;
+  }
+  const body = msg.phase === 'done' ? msg.text : msg.preview;
+  return (
+    <div className="hh-chat-reply">
+      {body || <span style={{ color: 'var(--color-accent-600)' }}>思考中…</span>}
+    </div>
   );
 }
 
@@ -84,6 +97,7 @@ export default function MessageCard({ msg }: { msg: StudioMessage }) {
     <div className="hh-msg is-system">
       {msg.kind === 'convert' && <ConvertCard msg={msg} />}
       {msg.kind === 'pdf' && <PdfCard msg={msg} />}
+      {msg.kind === 'chat' && <ChatReplyCard msg={msg} />}
       {msg.kind === 'text' && <span>{msg.text}</span>}
     </div>
   );

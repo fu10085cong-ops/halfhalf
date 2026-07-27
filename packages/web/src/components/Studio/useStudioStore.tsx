@@ -19,7 +19,7 @@ import type { SceneId, SceneResult } from '../../types';
 export interface Source {
   id: string;
   title: string;
-  kind: 'paste' | 'file'; // 二期加 'url'
+  kind: 'paste' | 'file' | 'url';
   /** 原始生料（粘贴原文/文档提取物） */
   raw: string;
   /** 标准 Markdown（转换产物；「跳过 AI」时 = raw）；未转换为空串 */
@@ -48,14 +48,15 @@ export interface PdfCardData {
   pdfUrl: string;
 }
 
-/** 操作流对话的一张卡；convert/pdf 卡随请求推进原地更新（phase） */
+/** 操作流对话的一张卡；convert/pdf/chat 卡随请求推进原地更新（phase）。
+ *  kind 'chat' = 自由对话轮（/api/ai/chat）——只有它进对话历史，动作卡不算 */
 export interface StudioMessage {
   id: string;
-  role: 'user' | 'system';
-  kind: 'text' | 'convert' | 'pdf';
+  role: 'user' | 'assistant' | 'system';
+  kind: 'text' | 'convert' | 'pdf' | 'chat';
   text?: string;
   phase?: 'working' | 'done' | 'error';
-  /** convert 卡：目标 source 与流式缓冲 */
+  /** convert 卡：目标 source 与流式缓冲；chat 卡也用 preview 做流式缓冲 */
   sourceId?: string;
   sourceTitle?: string;
   preview?: string;
@@ -87,20 +88,22 @@ export interface RunRecord {
   secs: string | null;
 }
 
-export type RailPanel = 'cards' | 'compress' | 'diagnostics' | 'history' | 'settings';
+/** 居中弹窗（Organic 弹窗语言）：同一时刻只开一个 */
+export type StudioModal = 'compress' | 'diagnostics' | 'history' | 'settings' | null;
 
 export interface StudioState {
   sources: Source[];
   messages: StudioMessage[];
   genConfig: GenConfig;
-  /** 右栏当前面板（cards = 卡片列表；其余为栈入的模块详情） */
-  railPanel: RailPanel;
+  /** 当前打开的居中弹窗（null = 无） */
+  modal: StudioModal;
   /** 非 null = 中栏切换为该 source 的编辑视图 */
   editingSourceId: string | null;
   pdfOverlay: { url: string; fileName: string } | null;
-  /** 队列转换/生成进行中（动作条防重入） */
+  /** 队列转换/生成/对话进行中（动作条防重入） */
   converting: boolean;
   generating: boolean;
+  chatting: boolean;
   lastResult: SceneResult | null;
   runs: RunRecord[];
 }
@@ -115,11 +118,12 @@ export type StudioAction =
   | { type: 'add_message'; message: StudioMessage }
   | { type: 'update_message'; id: string; patch: Partial<StudioMessage> }
   | { type: 'set_config'; patch: Partial<GenConfig> }
-  | { type: 'set_rail'; panel: RailPanel }
+  | { type: 'set_modal'; modal: StudioModal }
   | { type: 'edit_source'; id: string | null }
   | { type: 'set_overlay'; overlay: { url: string; fileName: string } | null }
   | { type: 'set_converting'; value: boolean }
   | { type: 'set_generating'; value: boolean }
+  | { type: 'set_chatting'; value: boolean }
   | { type: 'record_run'; run: RunRecord; result: SceneResult };
 
 function reducer(state: StudioState, action: StudioAction): StudioState {
@@ -153,8 +157,8 @@ function reducer(state: StudioState, action: StudioAction): StudioState {
       };
     case 'set_config':
       return { ...state, genConfig: { ...state.genConfig, ...action.patch } };
-    case 'set_rail':
-      return { ...state, railPanel: action.panel };
+    case 'set_modal':
+      return { ...state, modal: action.modal };
     case 'edit_source':
       return { ...state, editingSourceId: action.id };
     case 'set_overlay':
@@ -163,6 +167,8 @@ function reducer(state: StudioState, action: StudioAction): StudioState {
       return { ...state, converting: action.value };
     case 'set_generating':
       return { ...state, generating: action.value };
+    case 'set_chatting':
+      return { ...state, chatting: action.value };
     case 'record_run':
       return { ...state, runs: [...state.runs, action.run], lastResult: action.result };
     default:
@@ -186,7 +192,7 @@ function loadSources(): Source[] {
       .map((s) => ({
         id: s.id,
         title: typeof s.title === 'string' ? s.title : '未命名材料',
-        kind: s.kind === 'file' ? 'file' : 'paste',
+        kind: s.kind === 'file' || s.kind === 'url' ? s.kind : 'paste',
         raw: typeof s.raw === 'string' ? s.raw : '',
         markdown: typeof s.markdown === 'string' ? s.markdown : '',
         status: s.status === 'converted' ? 'converted' : 'raw',
@@ -230,11 +236,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     sources: loadSources(),
     messages: [],
     genConfig: INITIAL_CONFIG,
-    railPanel: 'cards' as RailPanel,
+    modal: null as StudioModal,
     editingSourceId: null,
     pdfOverlay: null,
     converting: false,
     generating: false,
+    chatting: false,
     lastResult: null,
     runs: [],
   }));

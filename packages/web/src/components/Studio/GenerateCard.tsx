@@ -32,9 +32,9 @@ export default function GenerateCard() {
   const enabledCount = state.sources.filter((s) => s.enabled && (s.markdown || s.raw).trim()).length;
 
   return (
-    <div className="hh-studio-card">
-      <b className="hh-card-title">📄 生成 PDF</b>
-      <small>勾选的 {enabledCount} 份材料按序拼成一份小抄</small>
+    <div className="hh-gen-card">
+      <b style={{ fontSize: 14 }}>📄 生成 PDF</b>
+      <div className="text-muted" style={{ fontSize: 12 }}>勾选的 {enabledCount} 份材料按序拼成一份小抄</div>
       <div className="hh-gen-row">
         <label>
           目标页数
@@ -52,7 +52,7 @@ export default function GenerateCard() {
         </label>
         <button
           type="button"
-          className="hh-btn-primary"
+          className="btn btn-primary"
           disabled={state.generating || enabledCount === 0}
           onClick={() => void generate()}
         >
@@ -60,7 +60,7 @@ export default function GenerateCard() {
         </button>
       </div>
       <details className="hh-advanced">
-        <summary style={{ cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
+        <summary>
           高级选项（场景/学科/边距…）
         </summary>
         <label>
