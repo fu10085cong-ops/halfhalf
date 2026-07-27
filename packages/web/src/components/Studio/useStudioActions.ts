@@ -34,6 +34,17 @@ function warnLines(r: SceneResult, targetPages: number): string[] {
   ];
 }
 
+/** 进行中请求的中断句柄。同一时刻至多一个对话/一条转换队列(state 里的
+ *  chatting/converting 防重入),模块级单例即可,不必进 store。 */
+let chatAbort: AbortController | null = null;
+let convertAbort: AbortController | null = null;
+/** 「停止」要停的是整条转换队列,不只是当前份 */
+let convertQueueStopped = false;
+
+function isAbortError(e: unknown): boolean {
+  return e instanceof Error && e.name === 'AbortError';
+}
+
 export function useStudioActions() {
   const { state, dispatch } = useStudio();
 
@@ -59,11 +70,13 @@ export function useStudioActions() {
         attempt: 1,
       },
     });
+    convertAbort = new AbortController();
     try {
       const resp = await apiFetch('/api/ai/structurize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: source.raw, provider: byokProvider() ?? undefined }),
+        signal: convertAbort.signal,
       });
       if (!resp.ok || !resp.headers.get('content-type')?.includes('event-stream')) {
         const data = (await resp.json().catch(() => ({}))) as { error?: string };
@@ -112,13 +125,18 @@ export function useStudioActions() {
       if (resultMd === null) throw new Error('转换中断，未收到最终结果，请重试');
       return resultMd;
     } catch (e) {
+      // 手动停止:半截产物不写回(排版吃了残缺 Markdown 比没有更糟),记错误卡
       dispatch({
         type: 'update_message',
         id: cardId,
-        patch: { phase: 'error', error: e instanceof Error ? e.message : String(e) },
+        patch: {
+          phase: 'error',
+          error: isAbortError(e) ? '已手动停止' : e instanceof Error ? e.message : String(e),
+        },
       });
       return null;
     } finally {
+      convertAbort = null;
       dispatch({ type: 'set_converting_source', id: null });
     }
   };
@@ -128,11 +146,21 @@ export function useStudioActions() {
     const raws = state.sources.filter((s) => s.enabled && s.status === 'raw' && s.raw.trim());
     if (raws.length === 0 || state.converting) return;
     dispatch({ type: 'set_converting', value: true });
+    convertQueueStopped = false;
     try {
-      for (const s of raws) await convertOne(s);
+      for (const s of raws) {
+        if (convertQueueStopped) break;
+        await convertOne(s);
+      }
     } finally {
       dispatch({ type: 'set_converting', value: false });
     }
+  };
+
+  /** 停止转换:中断当前份并放弃队列后续 */
+  const stopConvert = (): void => {
+    convertQueueStopped = true;
+    convertAbort?.abort();
   };
 
   /** 编辑视图「转换这份」：单个走队列同一条路 */
@@ -246,10 +274,14 @@ export function useStudioActions() {
     }
   };
 
-  /** 自由对话（/api/ai/chat SSE）：材料 = enabled sources 拼接;历史 = 之前完成的 chat 轮 */
-  const sendChat = async (text: string): Promise<void> => {
+  /** 自由对话（/api/ai/chat SSE）：材料 = 圈定(缺省全部) enabled sources 拼接;
+   *  历史 = 之前完成的 chat 轮。scopeIds 随消息存档,供「写回」定位与重试原样重发 */
+  const sendChat = async (text: string, scopeIds?: string[]): Promise<void> => {
     const content = text.trim();
     if (!content || state.chatting) return;
+    const scope = scopeIds?.length
+      ? state.sources.filter((s) => scopeIds.includes(s.id))
+      : state.sources;
     // 只有 kind:'chat' 进对话历史——转换/生成的动作卡与 AI 无对话语义
     const history = state.messages
       .filter((m) => m.kind === 'chat' && (m.role === 'user' || (m.role === 'assistant' && m.phase === 'done')))
@@ -257,29 +289,39 @@ export function useStudioActions() {
       .filter((m) => m.content.trim());
     dispatch({
       type: 'add_message',
-      message: { id: newId(), role: 'user', kind: 'chat', text: content },
+      message: { id: newId(), role: 'user', kind: 'chat', text: content, scopeIds },
     });
     const cardId = newId();
     dispatch({
       type: 'add_message',
-      message: { id: cardId, role: 'assistant', kind: 'chat', phase: 'working', preview: '' },
+      message: {
+        id: cardId,
+        role: 'assistant',
+        kind: 'chat',
+        phase: 'working',
+        preview: '',
+        prompt: content,
+        scopeIds,
+      },
     });
     dispatch({ type: 'set_chatting', value: true });
+    chatAbort = new AbortController();
+    let acc = '';
     try {
       const resp = await apiFetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...history, { role: 'user', content }],
-          context: combineEnabledMarkdown(state.sources),
+          context: combineEnabledMarkdown(scope),
           provider: byokProvider() ?? undefined,
         }),
+        signal: chatAbort.signal,
       });
       if (!resp.ok || !resp.headers.get('content-type')?.includes('event-stream')) {
         const data = (await resp.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error || `HTTP ${resp.status}`);
       }
-      let acc = '';
       let reply: string | null = null;
       let streamError: string | null = null;
       await consumeSse(resp, (event, data) => {
@@ -300,14 +342,32 @@ export function useStudioActions() {
       if (streamError) throw new Error(streamError);
       if (reply === null) throw new Error('对话中断，未收到完整回复，请重试');
     } catch (e) {
-      dispatch({
-        type: 'update_message',
-        id: cardId,
-        patch: { phase: 'error', error: e instanceof Error ? e.message : String(e) },
-      });
+      if (isAbortError(e) && acc.trim()) {
+        // 手动停止但已有流出内容:保留为完成态,后续「存为新材料/写回」照常可用
+        dispatch({
+          type: 'update_message',
+          id: cardId,
+          patch: { phase: 'done', text: acc, preview: undefined, stopped: true },
+        });
+      } else {
+        dispatch({
+          type: 'update_message',
+          id: cardId,
+          patch: {
+            phase: 'error',
+            error: isAbortError(e) ? '已手动停止' : e instanceof Error ? e.message : String(e),
+          },
+        });
+      }
     } finally {
+      chatAbort = null;
       dispatch({ type: 'set_chatting', value: false });
     }
+  };
+
+  /** 停止当前对话轮:已流出的部分保留 */
+  const stopChat = (): void => {
+    chatAbort?.abort();
   };
 
   /** 招牌动作「一键转换并排版」:生料全转（失败份用 raw 兜底）→ 立刻生成 PDF。
@@ -318,8 +378,10 @@ export function useStudioActions() {
     const raws = updated.filter((s) => s.enabled && s.status === 'raw' && s.raw.trim());
     if (raws.length > 0) {
       dispatch({ type: 'set_converting', value: true });
+      convertQueueStopped = false;
       try {
         for (const s of raws) {
+          if (convertQueueStopped) break;
           const md = await convertOne(s);
           if (md !== null) {
             s.markdown = md;
@@ -329,9 +391,20 @@ export function useStudioActions() {
       } finally {
         dispatch({ type: 'set_converting', value: false });
       }
+      // 用户按了停止 = 放弃这次一键流程,不拿半套材料去排版
+      if (convertQueueStopped) return;
     }
     await generate(updated);
   };
 
-  return { convertAllRaw, convertSingle, skipAi, generate, convertAndGenerate, sendChat };
+  return {
+    convertAllRaw,
+    convertSingle,
+    skipAi,
+    generate,
+    convertAndGenerate,
+    sendChat,
+    stopChat,
+    stopConvert,
+  };
 }

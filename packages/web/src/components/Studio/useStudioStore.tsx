@@ -72,6 +72,12 @@ export interface StudioMessage {
   check?: StructurizeCheck | null;
   pdf?: PdfCardData | null;
   error?: string;
+  /** chat 卡:该轮圈定的材料(undefined = 全部);assistant 卡上供「写回」定位 */
+  scopeIds?: string[];
+  /** chat assistant 卡:发起该轮的用户原话,供错误卡「重试」原样重发 */
+  prompt?: string;
+  /** 手动停止:done 但内容是截到停止时刻的部分回复 */
+  stopped?: boolean;
 }
 
 /** 生成参数（右栏生成卡持有，中栏动作条读取） */

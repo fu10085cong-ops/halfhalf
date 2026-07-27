@@ -12,9 +12,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "dompurify": "^3.4.12",
+    "marked": "^18.0.7",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@monaco-editor/react": "^4.6.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",
