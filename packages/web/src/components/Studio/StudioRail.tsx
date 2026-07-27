@@ -7,8 +7,8 @@ import { apiFetch } from '../../api';
 import type { FixtureInfo } from '../../types';
 import HeroCard from './HeroCard';
 import Modal from './Modal';
-import { IconChevron, IconGear, IconGrid, IconHistory, IconSparkle } from './icons';
-import { AiSettingsPanel, CompressPanel, DiagnosticsPanel, HistoryPanel } from './panels';
+import { IconChevron, IconGear, IconGrid, IconHistory, IconSliders, IconSparkle } from './icons';
+import { AiSettingsPanel, CompressPanel, DiagnosticsPanel, FocusPanel, HistoryPanel } from './panels';
 import { makeSource, useStudio, type StudioModal } from './useStudioStore';
 
 /** 瓦片语言逐字取自设计稿:线稿图标在上、粗体标题 + 40% 透明 chevron 在下,
@@ -19,6 +19,7 @@ const TILES: {
   title: string;
   hint: string;
 }[] = [
+  { modal: 'focus', icon: IconSliders, title: '重点规划', hint: '必留/忽略出计划,确认后应用' },
   { modal: 'compress', icon: IconSparkle, title: 'AI 精简', hint: '叙述改要点,逐块勾选建议' },
   { modal: 'diagnostics', icon: IconGrid, title: '诊断报告', hint: '最近一次生成的引擎细节' },
   { modal: 'history', icon: IconHistory, title: '会话历史', hint: '改参对照,每次生成一行' },
@@ -26,6 +27,7 @@ const TILES: {
 ];
 
 const MODAL_META: Record<Exclude<StudioModal, null>, { title: string; width: number }> = {
+  focus: { title: '重点规划', width: 760 },
   compress: { title: 'AI 精简', width: 860 },
   diagnostics: { title: '诊断报告', width: 760 },
   history: { title: '会话历史', width: 700 },
@@ -131,6 +133,7 @@ export default function StudioRail() {
           width={MODAL_META[open].width}
           onClose={() => dispatch({ type: 'set_modal', modal: null })}
         >
+          {open === 'focus' && <FocusPanel />}
           {open === 'compress' && <CompressPanel />}
           {open === 'diagnostics' && <DiagnosticsPanel />}
           {open === 'history' && <HistoryPanel />}

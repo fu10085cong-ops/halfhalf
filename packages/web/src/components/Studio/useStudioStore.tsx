@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { SceneId, SceneResult } from '../../types';
+import type { KnowledgeDocument } from '../../types/restructure';
 
 // ---------- 数据模型 ----------
 
@@ -27,6 +28,12 @@ export interface Source {
   status: 'raw' | 'converted';
   /** 是否参与排版（拼接口径：enabled 的按序拼接） */
   enabled: boolean;
+  /**
+   * 导入产物的可追溯知识节点（目前只有 PDF 有）。重点规划面板拿它出计划。
+   * 刻意只活在本次会话：一份十几页 PDF 有几百个节点，塞进 localStorage 会把
+   * 本就吃紧的配额顶爆（raw 里还压着 base64 页面图）。刷新后从「最近导入」重新打开即可。
+   */
+  knowledge?: KnowledgeDocument;
   meta: { charCount: number; importSummary?: string; createdAt: number };
 }
 
@@ -90,7 +97,7 @@ export interface RunRecord {
 }
 
 /** 居中弹窗（Organic 弹窗语言）：同一时刻只开一个 */
-export type StudioModal = 'compress' | 'diagnostics' | 'history' | 'settings' | null;
+export type StudioModal = 'compress' | 'diagnostics' | 'history' | 'settings' | 'focus' | null;
 
 export interface StudioState {
   sources: Source[];
@@ -256,7 +263,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SOURCES_KEY, JSON.stringify(state.sources));
+      // knowledge 是会话内数据（几百个节点），落盘会顶爆配额——写之前剥掉
+      const persistable = state.sources.map(({ knowledge: _knowledge, ...rest }) => rest);
+      localStorage.setItem(SOURCES_KEY, JSON.stringify(persistable));
       setStorageDegraded(false);
     } catch {
       setStorageDegraded(true);
@@ -290,6 +299,7 @@ export function makeSource(init: {
   markdown?: string;
   status?: Source['status'];
   importSummary?: string;
+  knowledge?: KnowledgeDocument;
 }): Source {
   const firstLine = init.raw
     .split('\n')
@@ -303,6 +313,7 @@ export function makeSource(init: {
     markdown: init.markdown ?? '',
     status: init.status ?? 'raw',
     enabled: true,
+    ...(init.knowledge ? { knowledge: init.knowledge } : {}),
     meta: {
       charCount: init.raw.length,
       importSummary: init.importSummary,

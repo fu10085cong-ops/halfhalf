@@ -7,6 +7,7 @@ import { useRef, useState } from 'react';
 import { apiFetch } from '../../api';
 import { importDocument, unsupportedFileReason } from '../../lib/documentImport';
 import { makeSource, useStudio } from './useStudioStore';
+import type { KnowledgeDocument } from '../../types/restructure';
 
 interface UploadingFile {
   name: string;
@@ -172,6 +173,8 @@ export default function AddSourceMenu() {
           raw: outcome.markdown,
           title: outcome.summary.originalName.replace(/\.(docx|pdf)$/i, ''),
           importSummary: summarize(outcome.summary.kind as 'docx' | 'pdf', outcome.summary),
+          // PDF 才有知识节点；带上它右栏「重点规划」才能用（会话内，不落盘）
+          knowledge: outcome.knowledge as KnowledgeDocument | undefined,
         }),
       });
     }
