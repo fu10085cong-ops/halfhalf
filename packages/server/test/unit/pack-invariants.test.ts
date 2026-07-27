@@ -181,3 +181,31 @@ test('洞驱动降档：原档装不下且换位无解时，降到备选窄档�
   );
   assert.equal(noAlt.pages, 2, '无备选档则开新页（老行为可复现）');
 });
+
+test('monotonic order never lets a later block jump back into an earlier column hole', () => {
+  const shortPage: PackGeometry = { columnHeightMm: 100, columnsPerPage: 24, gapMm: 0 };
+  const blocks: PackInput[] = [
+    { id: 'source-1', heightMm: 70, span: 6 },
+    { id: 'source-2', heightMm: 40, span: 6 },
+    { id: 'source-3', heightMm: 20, span: 6 },
+  ];
+
+  const legacy = packBlocks(blocks, shortPage, 'column-flow', {
+    repack: false,
+    backfill: false,
+  });
+  const strict = packBlocks(blocks, shortPage, 'column-flow', {
+    monotonicOrder: true,
+  });
+  const columnOf = (result: typeof strict, id: string) =>
+    result.placements.find((placement) => placement.id === id)!.column;
+
+  assert.equal(columnOf(legacy, 'source-2'), 6);
+  assert.equal(columnOf(legacy, 'source-3'), 0, 'legacy fills the old left hole');
+  assert.equal(columnOf(strict, 'source-2'), 6);
+  assert.equal(columnOf(strict, 'source-3'), 6, 'strict continues below the current column');
+  assert.deepEqual(
+    blocks.map((block) => columnOf(strict, block.id)),
+    [0, 6, 6]
+  );
+});

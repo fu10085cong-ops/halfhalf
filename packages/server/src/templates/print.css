@@ -246,3 +246,12 @@ blockquote {
   margin: 0.6em auto;
   break-inside: avoid;
 }
+
+.hh-source-page-image {
+  box-sizing: border-box;
+  width: 100%;
+  max-height: none;
+  margin: 0.15em auto 0;
+  border: 0.35pt solid #b8bec8;
+  background: #fff;
+}

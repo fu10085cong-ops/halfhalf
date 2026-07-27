@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import type { Density, Margins, PaperSize, ResolvedOrientation } from '../types/index.js';
 import { PAPER_SIZES, DENSITY_CONFIG } from '../types/index.js';
 import { openPage } from './browser-pool.js';
@@ -55,7 +56,7 @@ export async function createRenderContext(
     tempFilePath = path.join(os.tmpdir(), `halfhalf-${randomUUID()}.html`);
     await fs.writeFile(tempFilePath, fullHtml, 'utf-8');
 
-    await page.goto(`file://${tempFilePath}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(pathToFileURL(tempFilePath).href, { waitUntil: 'domcontentloaded' });
     await renderMermaidDiagrams(page);
 
     return { page, tempFilePath };

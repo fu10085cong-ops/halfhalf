@@ -157,6 +157,134 @@ export interface AiCompressResponse {
   summary: AiCompressSummary;
 }
 
+/**
+ * KnowledgeIR：导入产物的可追溯中间表示。每个节点都带页锚点，
+ * 保证转换后的任何一条内容都能回指原文件的位置。
+ */
+export type KnowledgeNodeKind =
+  | 'heading'
+  | 'concept'
+  | 'definition'
+  | 'formula'
+  | 'condition'
+  | 'procedure'
+  | 'comparison'
+  | 'example'
+  | 'warning'
+  | 'text'
+  | 'unknown';
+
+export type SourceExtractionMethod =
+  | 'native-text'
+  | 'ocr'
+  | 'formula-ocr'
+  | 'visual-fallback';
+
+export interface SourceAnchor {
+  /** 1-based source page number. */
+  page?: number;
+  /** Optional normalized page bounds: [x0, y0, x1, y1]. */
+  bbox?: [number, number, number, number];
+  method: SourceExtractionMethod;
+}
+
+export interface KnowledgeNode {
+  id: string;
+  kind: KnowledgeNodeKind;
+  text: string;
+  /** 原始提取文本；仅在清洗改动过 text 时才带上，用于人工核对。 */
+  rawText?: string;
+  latex?: string;
+  sourceAnchors: SourceAnchor[];
+  dependencies: string[];
+  confidence: number;
+  orderRigidity: 'strict' | 'soft';
+  /** True when this node should fall back to a source image crop. */
+  requiresVisualFallback: boolean;
+}
+
+export type PdfPageRoute = 'native' | 'hybrid' | 'ocr';
+
+export interface DocumentPageQuality {
+  page: number;
+  characterCount: number;
+  suspiciousCharacterCount: number;
+  suspiciousRatio: number;
+  blockCount: number;
+  route: PdfPageRoute;
+}
+
+export interface DocumentQualityReport {
+  suspiciousCharacterCount: number;
+  suspiciousRatio: number;
+  nativePageCount: number;
+  hybridPageCount: number;
+  ocrPageCount: number;
+  pages: DocumentPageQuality[];
+}
+
+export interface KnowledgeDocument {
+  schemaVersion: 1;
+  fileHash: string;
+  sourceOrder: 'strict' | 'soft';
+  pageCount?: number;
+  nodes: KnowledgeNode[];
+  quality?: DocumentQualityReport;
+}
+
+/** 用户意图：哪些必留、哪些可省、讲到多深。mustKeep 永远压过 omit。 */
+export type FocusPriority = 'must' | 'key' | 'supporting' | 'omit';
+export type ExplanationDepth = 'none' | 'brief' | 'standard' | 'deep';
+
+export interface FocusTopic {
+  query: string;
+  priority: FocusPriority;
+  explanationDepth?: ExplanationDepth;
+}
+
+export interface FocusSpec {
+  goal: string;
+  targetPages: number;
+  mustKeepNodeIds?: string[];
+  omitNodeIds?: string[];
+  topics?: FocusTopic[];
+  defaultExplanationDepth?: ExplanationDepth;
+  minFontPt?: number;
+}
+
+export type TransformAction =
+  | 'keep_exact'
+  | 'explain'
+  | 'summarize'
+  | 'merge'
+  | 'visual_keep'
+  | 'omit';
+
+export interface TransformDecision {
+  nodeId: string;
+  priority: FocusPriority;
+  action: TransformAction;
+  explanationDepth: ExplanationDepth;
+  areaWeight: number;
+  reason: string;
+  sourceAnchors: SourceAnchor[];
+}
+
+export interface RestructurePlan {
+  schemaVersion: 1;
+  fileHash: string;
+  focus: FocusSpec;
+  decisions: TransformDecision[];
+  summary: {
+    mustKeep: number;
+    key: number;
+    supporting: number;
+    omitted: number;
+    visualFallbacks: number;
+  };
+  warnings: string[];
+}
+
 /** POST /api/import/document、/api/import/url 的导入结果。 */
 export type ImportedDocumentKind = 'docx' | 'pdf' | 'url';
 
@@ -174,10 +302,14 @@ export interface DocumentImportSummary {
   textPageCount?: number;
   /** URL 导入时的最终地址（跟随重定向后） */
   sourceUrl?: string;
+  /** PDF 逐页提取质量诊断；docx/url 导入不产出。 */
+  quality?: DocumentQualityReport;
   warnings: string[];
 }
 
 export interface ImportedDocument {
   markdown: string;
   summary: DocumentImportSummary;
+  /** 可追溯知识节点；目前只有 PDF 导入产出。 */
+  knowledge?: KnowledgeDocument;
 }

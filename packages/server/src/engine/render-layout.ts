@@ -12,6 +12,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import type { Density, Margins, PaperSize, ResolvedOrientation } from '../types/index.js';
 import { DENSITY_CONFIG, PAPER_SIZES } from '../types/index.js';
 import { withPage } from './browser-pool.js';
@@ -221,7 +222,7 @@ ${pagesHtml.join('\n')}
 
   try {
     const pdfBuffer = await withPage(async (page) => {
-      await page.goto(`file://${tempFilePath}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(pathToFileURL(tempFilePath).href, { waitUntil: 'domcontentloaded' });
       await renderMermaidDiagrams(page);
       // 与测量阶段一致：等图片解码完成，再做原子缩放，保证量出的高度和最终渲染吻合
       await page.evaluate(() =>

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { exportRouter } from './routes/export.js';
 import { aiRouter } from './routes/ai.js';
 import { sceneRouter } from './routes/scene.js';
+import { restructureRouter } from './routes/restructure.js';
 import { documentUploadRouter } from './routes/document-upload.js';
 import { urlImportRouter } from './routes/url-import.js';
 import { fixturesRouter } from './routes/fixtures.js';
@@ -30,6 +31,7 @@ if (ACCESS_CODE) {
 app.use('/api', exportRouter);
 app.use('/api', aiRouter);
 app.use('/api', sceneRouter);
+app.use('/api', restructureRouter);
 app.use('/api', documentUploadRouter);
 app.use('/api', urlImportRouter);
 app.use('/api', fixturesRouter);

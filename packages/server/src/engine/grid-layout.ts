@@ -72,6 +72,8 @@ export interface GridSearchParams {
   /** 跨页回填：牺牲跨页阅读顺序换密度，默认 false——顺序刚性弱（S2）才该开 */
   backfill?: boolean;
   /** 字号搜索精度 pt，默认取 SEARCH_CONFIG.defaultPrecision */
+  /** Strict source documents never jump back into an earlier visual column hole. */
+  monotonicOrder?: boolean;
   precision?: number;
   /** 本地图片解析基准目录，透传做 base64 内嵌 */
   imageBaseDir?: string;
@@ -387,7 +389,7 @@ export async function searchGridFontSize(
             .map(({ span, heightMm }) => ({ span, heightMm }))
         : undefined,
     }));
-    const packOpts = { repack: params.repack, backfill: params.backfill };
+    const packOpts = { repack: params.repack, backfill: params.backfill, monotonicOrder: params.monotonicOrder };
     let packResult: ReturnType<typeof packBlocks>;
     let effMeasurements = measurements;
     if (params.jointSpan !== false) {

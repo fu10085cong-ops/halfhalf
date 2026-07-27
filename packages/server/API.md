@@ -60,12 +60,55 @@ interface ApiErrorResponse {
     imageCount: number;
     pageCount?: number;
     textPageCount?: number;
+    quality?: DocumentQualityReport;   // PDF 逐页提取质量诊断
     warnings: string[];
   };
+  knowledge?: KnowledgeDocument;       // 带页锚点的可追溯知识节点，目前只有 PDF 产出
 }
 ```
 
-常见错误码：`FILE_TOO_LARGE`、`INVALID_DOCX`、`INVALID_PDF`、`PASSWORD_PROTECTED`、`TOO_MANY_PAGES`、`OCR_REQUIRED`。检测信息（例如扫描件页数）放在可选的 `details` 中。
+常见错误码：`FILE_TOO_LARGE`、`INVALID_DOCX`、`INVALID_PDF`、`PASSWORD_PROTECTED`、`TOO_MANY_PAGES`、`OCR_REQUIRED`、`PDF_VISUAL_RENDER_FAILED`。检测信息（例如扫描件页数）放在可选的 `details` 中。
+
+这个端点是同步的，跟异步队列共享同一份并发额度；服务器正忙时返回 `429 IMPORT_BUSY`，
+批量或大文件请改用下面的 `/api/import/jobs`。
+
+---
+
+## `POST /api/import/jobs`（异步导入）
+
+同样是 `multipart/form-data`，但立刻返回 `202` 和任务快照，解析在后台进行——大 PDF 不会把 HTTP 连接挂死。
+
+请求头 `x-halfhalf-client` 携带浏览器生成的匿名客户端 ID，用于任务归属、配额和历史连续性。
+**它不是登录认证**：拿到别人的 ID 就能读到对方的任务，正式账号归属属于后续工作。
+
+| 端点 | 作用 |
+|------|------|
+| `POST /api/import/jobs` | 提交任务，`202` 返回 `{ jobId, status, stage, progress, message, ... }` |
+| `GET /api/import/jobs/:jobId` | 查询进度；`status === 'completed'` 时带上完整 `result` |
+| `GET /api/import/jobs` | 当前客户端最近任务的轻量历史，**不内嵌页面图**，打开某个任务时才取完整结果 |
+| `DELETE /api/import/jobs/:jobId` | 取消排队中或运行中的任务 |
+| `GET /api/import/jobs/limits` | 查询当前生效的并发、配额、保留期和是否已启用持久化 |
+
+`status`：`queued` / `running` / `completed` / `failed` / `cancelled`。
+`stage`：`queued` / `extracting` / `rendering` / `finalizing` / `completed`。
+
+超配额返回 `429 IMPORT_OWNER_LIMIT` 或 `429 IMPORT_QUEUE_FULL`。
+设置 `HALFHALF_DATA_DIR` 后，任务快照和已完成结果用原子文件写入并可跨进程重启恢复；
+重启时仍处于 `queued`/`running` 的任务会被明确标记为 `IMPORT_INTERRUPTED` 失败，不会伪造成功。
+未设置该变量时保持开发环境的纯内存行为。
+
+---
+
+## `POST /api/restructure/plan` / `POST /api/restructure/materialize`
+
+把「用户想要什么」变成可审计、可撤销的重构操作。
+
+`plan` 接收 `/api/import/*` 返回的 `KnowledgeDocument` 和一份 `FocusSpec`（用途、必须保留、
+重点、希望忽略、默认讲解深度、目标页数），返回逐节点的决策列表，每条都带来源锚点和理由。
+规则：`mustKeep` 永远压过 `omit`；提取置信度低的公式节点走 `visual_keep`，不会被悄悄改写。
+
+`materialize` 校验计划的 `fileHash` 与来源文档一致后确定性地应用它，返回重构后的 Markdown、
+修订号、操作日志和前后对照摘要。哈希不匹配直接拒绝，避免把计划套到另一份文件上。
 
 ---
 
@@ -106,7 +149,7 @@ interface ApiErrorResponse {
 ```ts
 interface SceneRequest {
   markdown: string;      // 必填，非空
-  targetPages?: number;  // 1~50 的整数，默认 1
+  targetPages?: number;  // 1~50 的整数，默认 2（一张 A4 正反面）
   scene?: 'auto' | 'text-cram' | 'formula' | 'code' | 'visual' | 'balanced';  // 默认 'auto'（按内容特征推荐）
   orientation?: 'portrait' | 'landscape';  // 默认 'portrait'
   debug?: boolean;       // true = PDF 叠加网格线/块方框/标签（排版本身不变，文件名加「-网格」后缀）
@@ -117,6 +160,10 @@ interface SceneRequest {
                           // 省略 = 只走力学层兜底；传未知 id 返回 400
 }
 ```
+
+**严格来源页序**：markdown 里出现 `<!-- halfhalf:source-order=strict -->` 注释时（PDF 导入会自动写入），
+拼装层强制单调落位——重排、跨页回填和 `allowReorder` 一律关闭，后面的块不会跳回前面页的列洞。
+导入的 PDF 靠这个保持和原文件一致的页序。
 
 请求 body 另支持：
 - `marginMm?: number`——四边统一页边距毫米（3~25，省略 = 默认 10；6mm 比默认多约
