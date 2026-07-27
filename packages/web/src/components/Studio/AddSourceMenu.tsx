@@ -1,5 +1,5 @@
 /**
- * 「+ 添加材料」三入口：粘贴文本（内联区）/ 上传文件（/api/import/document）/
+ * 「+ 添加材料」三入口：粘贴文本（内联区）/ 上传文件（异步 /api/import/jobs）/
  * 网页 URL（/api/import/url,正文抽取后落成生料卡）。
  * 拖文件进页面任意位置由外层 DocumentDropSurface 接住,不经此处。
  */
@@ -7,6 +7,13 @@ import { useRef, useState } from 'react';
 import { apiFetch } from '../../api';
 import { importDocument, unsupportedFileReason } from '../../lib/documentImport';
 import { makeSource, useStudio } from './useStudioStore';
+
+interface UploadingFile {
+  name: string;
+  progress: number;
+  message: string;
+  abort: () => void;
+}
 
 /** 与旧界面 attachmentSummary 同口径的一行文件概述（存进 source.meta.importSummary） */
 function summarize(kind: 'docx' | 'pdf', s: {
@@ -47,7 +54,8 @@ export default function AddSourceMenu() {
   const [pasteText, setPasteText] = useState('');
   const [urlText, setUrlText] = useState('');
   const [fetching, setFetching] = useState(false);
-  const [uploading, setUploading] = useState<string[]>([]);
+  // 异步导入：进度 + 取消（大 PDF 的原页保真要十几秒，不能只显示「导入中…」）
+  const [uploading, setUploading] = useState<UploadingFile[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -135,11 +143,26 @@ export default function AddSourceMenu() {
         setErrors((cur) => [...cur, `${file.name}：${unsupported}`]);
         continue;
       }
-      setUploading((cur) => [...cur, file.name]);
-      const outcome = await importDocument(file);
-      setUploading((cur) => cur.filter((n) => n !== file.name));
+      const controller = new AbortController();
+      setUploading((cur) => [
+        ...cur,
+        { name: file.name, progress: 0, message: '已进入解析队列', abort: () => controller.abort() },
+      ]);
+      const outcome = await importDocument(file, {
+        signal: controller.signal,
+        onProgress: (progress) =>
+          setUploading((cur) =>
+            cur.map((item) =>
+              item.name === file.name
+                ? { ...item, progress: progress.progress, message: progress.message }
+                : item
+            )
+          ),
+      });
+      setUploading((cur) => cur.filter((item) => item.name !== file.name));
       if (!outcome.ok) {
-        setErrors((cur) => [...cur, `${file.name}：${outcome.error}`]);
+        // 用户自己按的取消不算错误，不往错误区堆红字
+        if (!outcome.cancelled) setErrors((cur) => [...cur, `${file.name}：${outcome.error}`]);
         continue;
       }
       dispatch({
@@ -225,9 +248,25 @@ export default function AddSourceMenu() {
           e.target.value = '';
         }}
       />
-      {uploading.map((name) => (
-        <div key={name} style={{ fontSize: 12, marginTop: 6 }} className="text-muted">
-          ⏳ {name} 导入中…
+      {uploading.map((item) => (
+        <div key={item.name} className="hh-upload-progress">
+          <div className="hh-upload-line">
+            <span className="text-muted" title={item.name}>
+              {item.name} · {item.message}
+            </span>
+            <button type="button" className="text-muted" onClick={() => item.abort()}>
+              取消
+            </button>
+          </div>
+          <span
+            className="hh-upload-bar"
+            role="progressbar"
+            aria-valuenow={item.progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <i style={{ width: `${item.progress}%` }} />
+          </span>
         </div>
       ))}
       {errors.map((msg, i) => (

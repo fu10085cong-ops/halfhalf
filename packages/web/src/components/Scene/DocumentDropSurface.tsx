@@ -1,8 +1,12 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  fetchImportResult,
   importDocument,
+  listRecentImports,
   unsupportedFileReason,
   type DocumentImportSummary,
+  type ImportJobListEntry,
+  type ImportProgress,
 } from '../../lib/documentImport';
 import './DocumentDropSurface.css';
 
@@ -17,6 +21,10 @@ interface Attachment {
   error?: string;
   errorCode?: string;
   pageCount?: number;
+  /** 异步解析的实时进度；ready/error 后不再更新 */
+  progress?: ImportProgress;
+  /** 取消这条正在跑的解析 */
+  abort?: () => void;
 }
 
 interface DocumentDropSurfaceProps {
@@ -35,7 +43,9 @@ function formatBytes(bytes: number): string {
 }
 
 function attachmentSummary(attachment: Attachment): string {
-  if (attachment.status === 'processing') return '正在读取并分析内容…';
+  if (attachment.status === 'processing') {
+    return attachment.progress?.message || '正在读取并分析内容…';
+  }
   if (attachment.status === 'error') {
     if (attachment.errorCode === 'OCR_REQUIRED') {
       return `扫描版 PDF${attachment.pageCount ? ` · ${attachment.pageCount} 页` : ''} · 需要 OCR`;
@@ -77,6 +87,8 @@ export default function DocumentDropSurface({
 }: DocumentDropSurfaceProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [recent, setRecent] = useState<ImportJobListEntry[]>([]);
+  const [restoringJobId, setRestoringJobId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
 
@@ -88,10 +100,27 @@ export default function DocumentDropSurface({
     );
   };
 
+  // 已完成的历史任务：刷新页面后还能把导入过的材料捞回来（列表不含页面图）
+  const refreshRecent = useCallback(async () => {
+    const jobs = await listRecentImports(5).catch(() => []);
+    setRecent(jobs.filter((job) => job.status === 'completed'));
+  }, []);
+
+  useEffect(() => {
+    void refreshRecent();
+  }, [refreshRecent]);
+
   const processFiles = async (files: File[]) => {
     for (const file of files) {
       const id = newAttachmentId();
-      const attachment: Attachment = { id, name: file.name, sizeBytes: file.size, status: 'processing' };
+      const controller = new AbortController();
+      const attachment: Attachment = {
+        id,
+        name: file.name,
+        sizeBytes: file.size,
+        status: 'processing',
+        abort: () => controller.abort(),
+      };
       setAttachments((current) =>
         [attachment, ...current].slice(0, 8)
       );
@@ -99,20 +128,24 @@ export default function DocumentDropSurface({
       try {
         if (file.type.startsWith('image/')) {
           await onImageImport(file);
-          updateAttachment(id, { status: 'ready' });
+          updateAttachment(id, { status: 'ready', abort: undefined });
           continue;
         }
 
         const unsupported = unsupportedFileReason(file.name);
         if (unsupported) throw new Error(unsupported);
 
-        const outcome = await importDocument(file);
+        const outcome = await importDocument(file, {
+          signal: controller.signal,
+          onProgress: (progress) => updateAttachment(id, { progress }),
+        });
         if (!outcome.ok) {
           updateAttachment(id, {
             status: 'error',
             error: outcome.error,
             errorCode: outcome.errorCode,
             pageCount: outcome.pageCount,
+            abort: undefined,
           });
           continue;
         }
@@ -122,13 +155,55 @@ export default function DocumentDropSurface({
           status: 'ready',
           name: outcome.summary.originalName,
           summary: outcome.summary,
+          abort: undefined,
         });
+        void refreshRecent();
       } catch (error) {
         updateAttachment(id, {
           status: 'error',
           error: error instanceof Error ? error.message : String(error),
+          abort: undefined,
         });
       }
+    }
+  };
+
+  const restoreJob = async (job: ImportJobListEntry) => {
+    setRestoringJobId(job.jobId);
+    try {
+      const outcome = await fetchImportResult(job.jobId);
+      if (!outcome.ok) {
+        setAttachments((current) =>
+          [
+            {
+              id: newAttachmentId(),
+              name: job.fileName,
+              sizeBytes: job.sizeBytes,
+              status: 'error' as AttachmentStatus,
+              error: outcome.error,
+              errorCode: outcome.errorCode,
+            },
+            ...current,
+          ].slice(0, 8)
+        );
+        void refreshRecent();
+        return;
+      }
+      onMarkdownImport(outcome.markdown, outcome.summary);
+      setAttachments((current) =>
+        [
+          {
+            id: newAttachmentId(),
+            name: outcome.summary.originalName,
+            sizeBytes: outcome.summary.sizeBytes,
+            status: 'ready' as AttachmentStatus,
+            summary: outcome.summary,
+          },
+          ...current,
+        ].slice(0, 8)
+      );
+    } finally {
+      setRestoringJobId(null);
     }
   };
 
@@ -180,28 +255,68 @@ export default function DocumentDropSurface({
               <span className="hh-file-copy">
                 <b title={attachment.name}>{attachment.name}</b>
                 <small>{attachmentSummary(attachment)}</small>
+                {attachment.status === 'processing' && (
+                  <span
+                    className="hh-file-progress"
+                    role="progressbar"
+                    aria-valuenow={attachment.progress?.progress ?? 0}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <i style={{ width: `${attachment.progress?.progress ?? 0}%` }} />
+                  </span>
+                )}
                 {attachment.error && <em>{attachment.error}</em>}
                 {attachment.summary?.warnings[0] && (
                   <em className="hh-file-warning">提示：{attachment.summary.warnings[0]}</em>
                 )}
               </span>
-              <button
-                type="button"
-                className="hh-dismiss-file"
-                title="隐藏这条概述（不会删除已导入的正文）"
-                onClick={() =>
-                  setAttachments((current) =>
-                    current.filter((item) => item.id !== attachment.id)
-                  )
-                }
-              >
-                ×
-              </button>
+              {attachment.status === 'processing' && attachment.abort ? (
+                <button
+                  type="button"
+                  className="hh-dismiss-file"
+                  title="取消这次解析"
+                  onClick={() => attachment.abort?.()}
+                >
+                  取消
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="hh-dismiss-file"
+                  title="隐藏这条概述（不会删除已导入的正文）"
+                  onClick={() =>
+                    setAttachments((current) =>
+                      current.filter((item) => item.id !== attachment.id)
+                    )
+                  }
+                >
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
 
+      {recent.length > 0 && (
+        <div className="hh-recent-imports">
+          <small>最近导入（服务器保留期内可恢复）</small>
+          <div className="hh-recent-list">
+            {recent.map((job) => (
+              <button
+                key={job.jobId}
+                type="button"
+                title={`${job.fileName} · ${formatBytes(job.sizeBytes)}`}
+                disabled={restoringJobId !== null}
+                onClick={() => void restoreJob(job)}
+              >
+                {restoringJobId === job.jobId ? '恢复中…' : job.fileName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 
