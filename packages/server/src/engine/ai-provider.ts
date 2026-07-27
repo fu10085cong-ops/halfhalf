@@ -23,6 +23,57 @@ export const ALLOWED_HOSTS = new Set([
   'api.minimaxi.com',
 ]);
 
+/**
+ * 前端「AI 设置」下拉的服务商预设。与 ALLOWED_HOSTS 同源维护：
+ * 每个 endpoint 的域名必须在白名单里（有单测锁），避免前端硬编码漂移。
+ * defaultModel 挑各家便宜稳的默认档；keyUrl 是申请 key 的入口页。
+ */
+export interface AiProviderPreset {
+  id: string;
+  name: string;
+  endpoint: string;
+  defaultModel: string;
+  keyUrl: string;
+}
+
+export const PROVIDER_PRESETS: AiProviderPreset[] = [
+  {
+    id: 'deepseek',
+    name: 'DeepSeek（深度求索）',
+    endpoint: 'https://api.deepseek.com/v1/chat/completions',
+    defaultModel: 'deepseek-chat',
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+  },
+  {
+    id: 'qwen',
+    name: '通义千问（阿里云百炼）',
+    endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    defaultModel: 'qwen-plus',
+    keyUrl: 'https://bailian.console.aliyun.com/?apiKey=1',
+  },
+  {
+    id: 'zhipu',
+    name: '智谱 GLM',
+    endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    defaultModel: 'glm-4-flash',
+    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+  },
+  {
+    id: 'minimax',
+    name: 'MiniMax',
+    endpoint: 'https://api.minimaxi.com/v1/chat/completions',
+    defaultModel: 'MiniMax-Text-01',
+    keyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    endpoint: 'https://api.openai.com/v1/chat/completions',
+    defaultModel: 'gpt-4o-mini',
+    keyUrl: 'https://platform.openai.com/api-keys',
+  },
+];
+
 function isAllowedHost(hostname: string): boolean {
   if (ALLOWED_HOSTS.has(hostname)) return true;
   if (

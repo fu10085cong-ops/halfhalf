@@ -3,14 +3,30 @@ import type {
   AiProxyRequest,
   AiCompressRequest,
   AiStructurizeRequest,
+  AiChatRequest,
   AiProviderConfig,
   ApiErrorResponse,
 } from '../types/index.js';
-import { validateEndpoint, forwardRaw, AiTimeoutError } from '../engine/ai-provider.js';
+import {
+  validateEndpoint,
+  forwardRaw,
+  AiTimeoutError,
+  PROVIDER_PRESETS,
+} from '../engine/ai-provider.js';
 import { compressMarkdown } from '../engine/ai-compress.js';
 import { structurize, resolveServerProvider } from '../engine/ai-structurize.js';
+import { chatRespond, type ChatTurn } from '../engine/ai-chat.js';
 
 export const aiRouter: Router = Router();
+
+/**
+ * GET /api/ai/providers
+ * 「AI 设置」下拉的服务商预设清单（静态常量，与 BYOK 白名单同源维护）。
+ * 只是候选项——用户仍可手填任何白名单内的端点。
+ */
+aiRouter.get('/ai/providers', (_req: Request, res: Response) => {
+  res.json({ providers: PROVIDER_PRESETS });
+});
 
 /**
  * POST /api/ai/proxy
@@ -99,7 +115,7 @@ aiRouter.post('/ai/compress', async (req: Request, res: Response) => {
   }
 });
 
-// —— ⓪ 结构化入口的滥用防线（structurize 可能花的是部署者的 key 钱）——
+// —— structurize / chat 共用的滥用防线（两者都可能花部署者的 key 钱）——
 // 内存滑动窗口限流：每 IP 每小时 HALFHALF_AI_RATE_LIMIT 次（默认 10）；
 // 输入长度上限 HALFHALF_AI_MAX_INPUT 字符（默认 6 万，约一门课的完整讲义）。
 const RATE_LIMIT = Math.max(1, Number(process.env.HALFHALF_AI_RATE_LIMIT) || 10);
@@ -130,6 +146,28 @@ function validateProvider(provider: AiProviderConfig): string | null {
 }
 
 /**
+ * key 解析（structurize / chat 共用）：BYOK（走白名单）> 服务器统一 key（端点受信任）> 报错。
+ * 返回 error 时已带 HTTP 状态，路由直接回 JSON。
+ */
+function resolveProvider(
+  byok: AiProviderConfig | undefined
+): { provider: AiProviderConfig; trustEndpoint: boolean } | { status: number; error: string } {
+  if (byok) {
+    const err = validateProvider(byok);
+    if (err) return { status: 400, error: err };
+    return { provider: byok, trustEndpoint: false };
+  }
+  const serverProvider = resolveServerProvider();
+  if (!serverProvider) {
+    return {
+      status: 501,
+      error: '服务器未配置 AI（HALFHALF_AI_ENDPOINT/MODEL/KEY），请在「AI 设置」里填自己的 key',
+    };
+  }
+  return { provider: serverProvider, trustEndpoint: true };
+}
+
+/**
  * POST /api/ai/structurize（SSE 流式）
  * ⓪ 结构化入口：任意粘贴内容 → 标准 .md（DESIGN.md）。只重组不新增知识。
  * key 解析顺序：请求带 provider（BYOK，走白名单）> 服务器统一 key（env，端点受信任）> 501。
@@ -149,26 +187,12 @@ aiRouter.post('/ai/structurize', async (req: Request, res: Response) => {
   }
 
   // BYOK 优先（用户花自己的钱），否则服务器统一 key
-  let provider: AiProviderConfig;
-  let trustEndpoint = false;
-  if (body.provider) {
-    const err = validateProvider(body.provider);
-    if (err) {
-      res.status(400).json({ error: err } satisfies ApiErrorResponse);
-      return;
-    }
-    provider = body.provider;
-  } else {
-    const serverProvider = resolveServerProvider();
-    if (!serverProvider) {
-      res.status(501).json({
-        error: '服务器未配置 AI（HALFHALF_AI_ENDPOINT/MODEL/KEY），请在「AI 设置」里填自己的 key',
-      } satisfies ApiErrorResponse);
-      return;
-    }
-    provider = serverProvider;
-    trustEndpoint = true;
+  const resolved = resolveProvider(body.provider);
+  if ('error' in resolved) {
+    res.status(resolved.status).json({ error: resolved.error } satisfies ApiErrorResponse);
+    return;
   }
+  const { provider, trustEndpoint } = resolved;
 
   if (rateLimited(req.ip ?? 'unknown')) {
     res.status(429).json({
@@ -204,6 +228,93 @@ aiRouter.post('/ai/structurize', async (req: Request, res: Response) => {
           ? error.message
           : '未知错误';
     send('error', { error: `结构化失败: ${message}` });
+  } finally {
+    res.end();
+  }
+});
+
+/** /ai/chat 请求校验：返回中文错误串或 null（长度上限单独走 413） */
+function validateChat(body: AiChatRequest): string | null {
+  if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
+    return 'messages 不能为空';
+  }
+  for (const m of body.messages) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant')) {
+      return 'messages 里的 role 只能是 user / assistant';
+    }
+    if (typeof m.content !== 'string' || m.content.trim() === '') {
+      return 'messages 里的 content 必须是非空字符串';
+    }
+  }
+  if (body.messages[body.messages.length - 1].role !== 'user') {
+    return '最后一条消息必须是 user';
+  }
+  if (body.context !== undefined && typeof body.context !== 'string') {
+    return 'context 必须是字符串';
+  }
+  return null;
+}
+
+/**
+ * POST /api/ai/chat（SSE 流式）
+ * 多轮材料对话：围绕客户端带来的材料回答/改写/给排版建议（红线在 engine/ai-chat.ts 的
+ * system prompt）。服务端无状态：材料 + 历史每次全量带上，不落盘不留存。
+ * key 解析、限流、输入上限与 /ai/structurize 完全同一套。
+ * SSE 事件：delta {text} / result {reply} / error {error}。
+ */
+aiRouter.post('/ai/chat', async (req: Request, res: Response) => {
+  const body = req.body as AiChatRequest;
+  const err = validateChat(body);
+  if (err) {
+    res.status(400).json({ error: err } satisfies ApiErrorResponse);
+    return;
+  }
+  const totalChars =
+    (body.context?.length ?? 0) + body.messages.reduce((sum, m) => sum + m.content.length, 0);
+  if (totalChars > MAX_INPUT_CHARS) {
+    res.status(413).json({
+      error: `材料 + 对话超过 ${MAX_INPUT_CHARS} 字上限，请减少参与对话的材料`,
+    } satisfies ApiErrorResponse);
+    return;
+  }
+
+  const resolved = resolveProvider(body.provider);
+  if ('error' in resolved) {
+    res.status(resolved.status).json({ error: resolved.error } satisfies ApiErrorResponse);
+    return;
+  }
+
+  if (rateLimited(req.ip ?? 'unknown')) {
+    res.status(429).json({
+      error: `太频繁了：每小时最多 ${RATE_LIMIT} 次 AI 调用，请稍后再试`,
+    } satisfies ApiErrorResponse);
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  const send = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const result = await chatRespond(
+      { context: body.context ?? '', messages: body.messages as ChatTurn[] },
+      resolved.provider,
+      { onDelta: (text) => send('delta', { text }) },
+      { trustEndpoint: resolved.trustEndpoint }
+    );
+    send('result', result);
+  } catch (error) {
+    const message =
+      error instanceof AiTimeoutError
+        ? '上游响应超时'
+        : error instanceof Error
+          ? error.message
+          : '未知错误';
+    send('error', { error: `对话失败: ${message}` });
   } finally {
     res.end();
   }
