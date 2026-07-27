@@ -15,7 +15,8 @@
     "test": "tsx --test test/unit/*.test.ts",
     "test:persistence": "tsx test/run-persistence-e2e.ts",
     "bench": "tsx test/run-bench.ts",
-    "bench:document": "tsx test/run-document-bench.ts"
+    "bench:document": "tsx test/run-document-bench.ts",
+    "bench:research": "tsx test/run-research-bench.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

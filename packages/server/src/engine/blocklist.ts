@@ -22,6 +22,14 @@ wenwen.sogou.com
 zhidao.baidu.com
 baijiahao.baidu.com
 
+# 问答农场（续）
+wenda.so.com
+
+# 泛内容农场：靠 SEO 铺各学科词条，内容互相转载
+# tianqi.com 是天气网——它出现在「戴维南定理」的搜索结果里，就是这类站的典型特征
+tianqi.com
+yebaike.com
+
 # 付费墙或登录墙的文库站——抓不到也读不全
 max.book118.com
 m.renrendoc.com
