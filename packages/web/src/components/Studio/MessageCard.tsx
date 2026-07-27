@@ -2,7 +2,9 @@
  * 对话流单卡：user 文本气泡 / convert 转换卡（流式预览+体检结论）/ pdf 结果卡（指标+预览/下载）。
  * convert/pdf 卡由动作随 phase 原地更新。
  */
+import { IconCheck } from './icons';
 import { useStudio, type StudioMessage } from './useStudioStore';
+import { useStudioActions } from './useStudioActions';
 
 function ConvertCard({ msg }: { msg: StudioMessage }) {
   return (
@@ -76,6 +78,51 @@ function PdfCard({ msg }: { msg: StudioMessage }) {
   );
 }
 
+/** 生料引导卡（产品特色的自动引导）：新材料落卡即出——一键转换或跳过 AI。
+ *  状态从当前 source 派生:已转换/已删除时按钮消失,卡片留痕不刷屏 */
+function GuideCard({ msg }: { msg: StudioMessage }) {
+  const { state } = useStudio();
+  const { convertSingle, skipAi } = useStudioActions();
+  const source = state.sources.find((s) => s.id === msg.sourceId);
+  if (!source) {
+    return <span className="text-muted">材料《{msg.sourceTitle}》已删除</span>;
+  }
+  if (source.status === 'converted') {
+    return (
+      <span className="hh-msg-ok" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <IconCheck size={13} />《{source.title}》已就绪，可以参与排版
+      </span>
+    );
+  }
+  return (
+    <>
+      <b>检测到生料《{source.title}》</b>
+      <div className="text-muted" style={{ marginTop: 2 }}>
+        转换成标准 Markdown 后排版更稳——伪表格、公式、章节结构都会被整理好；这是 HalfHalf
+        的看家环节。右栏「一键转换并排版」可以整批处理。
+      </div>
+      <div className="hh-msg-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={state.converting}
+          onClick={() => void convertSingle(source)}
+        >
+          立即转换这份
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          title="不经 AI，原样当成品参与排版（没配 AI key 时的直通路径）"
+          onClick={() => skipAi(source)}
+        >
+          跳过 AI，原样用
+        </button>
+      </div>
+    </>
+  );
+}
+
 /** 自由对话的 AI 回复卡：流式期间显示缓冲，完成后显示完整 Markdown 文本 */
 function ChatReplyCard({ msg }: { msg: StudioMessage }) {
   if (msg.phase === 'error') {
@@ -98,6 +145,7 @@ export default function MessageCard({ msg }: { msg: StudioMessage }) {
       {msg.kind === 'convert' && <ConvertCard msg={msg} />}
       {msg.kind === 'pdf' && <PdfCard msg={msg} />}
       {msg.kind === 'chat' && <ChatReplyCard msg={msg} />}
+      {msg.kind === 'guide' && <GuideCard msg={msg} />}
       {msg.kind === 'text' && <span>{msg.text}</span>}
     </div>
   );

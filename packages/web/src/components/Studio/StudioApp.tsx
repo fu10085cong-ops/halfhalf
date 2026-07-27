@@ -4,6 +4,7 @@
  * `?ui=studio` 进入,与旧界面并存;后端零改动。
  * 整个应用包在 DocumentDropSurface 里——拖文件到页面任意位置落成新材料卡。
  */
+import { useEffect, useRef } from 'react';
 import DocumentDropSurface from '../Scene/DocumentDropSurface';
 import { IconLogo } from './icons';
 import ChatStream from './ChatStream';
@@ -11,7 +12,7 @@ import PdfOverlay from './PdfOverlay';
 import SourceEditor from './SourceEditor';
 import SourcesRail from './SourcesRail';
 import StudioRail from './StudioRail';
-import { makeSource, StudioProvider, useStudio } from './useStudioStore';
+import { makeSource, newId, StudioProvider, useStudio } from './useStudioStore';
 import './Studio.css';
 
 function StudioShell() {
@@ -19,6 +20,32 @@ function StudioShell() {
   const editing = state.editingSourceId
     ? state.sources.find((s) => s.id === state.editingSourceId) ?? null
     : null;
+
+  // 生料自动引导（产品特色）：本次会话新落卡且 status=raw 的 source → 对话流出引导卡。
+  // ref 以挂载时的 sources 初始化——刷新恢复的旧材料不刷屏,只有新增才引导。
+  const knownIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (knownIds.current === null) {
+      knownIds.current = new Set(state.sources.map((s) => s.id));
+      return;
+    }
+    for (const s of state.sources) {
+      if (knownIds.current.has(s.id)) continue;
+      knownIds.current.add(s.id);
+      if (s.status === 'raw' && s.raw.trim()) {
+        dispatch({
+          type: 'add_message',
+          message: {
+            id: newId(),
+            role: 'system',
+            kind: 'guide',
+            sourceId: s.id,
+            sourceTitle: s.title,
+          },
+        });
+      }
+    }
+  }, [state.sources, dispatch]);
 
   return (
     <DocumentDropSurface

@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import AddSourceMenu from './AddSourceMenu';
 import SourceCard from './SourceCard';
+import { IconFile } from './icons';
 import { useStudio } from './useStudioStore';
 
 export default function SourcesRail({ uploadPanel }: { uploadPanel: ReactNode }) {
@@ -13,7 +14,7 @@ export default function SourcesRail({ uploadPanel }: { uploadPanel: ReactNode })
   return (
     <div className="studio-col is-left">
       <div className="studio-col-head">
-        材料
+        来源
         <small>{state.sources.length > 0 && `${state.sources.length} 份`}</small>
       </div>
       <div className="studio-col-body">
@@ -25,7 +26,7 @@ export default function SourcesRail({ uploadPanel }: { uploadPanel: ReactNode })
         )}
         {state.sources.length === 0 ? (
           <div className="hh-empty">
-            <span className="hh-empty-icon" aria-hidden="true">📚</span>
+            <span className="hh-empty-icon" aria-hidden="true"><IconFile size={26} /></span>
             <b>还没有材料</b>
             <br />
             把 Word / PDF 拖到页面任意位置，或点上方「＋ 添加材料」。

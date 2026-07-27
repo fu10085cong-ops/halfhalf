@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import MessageCard from './MessageCard';
+import { IconChat } from './icons';
 import { useStudio } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
@@ -29,11 +30,11 @@ export default function ChatStream() {
 
   return (
     <div className="studio-col is-mid">
-      <div className="studio-col-head">工作台</div>
+      <div className="studio-col-head">对话</div>
       <div className="hh-chat-scroll" ref={scrollRef}>
         {state.messages.length === 0 && (
           <div className="hh-empty">
-            <span className="hh-empty-icon" aria-hidden="true">💬</span>
+            <span className="hh-empty-icon" aria-hidden="true"><IconChat size={26} /></span>
             <b>转换、排版、提问都在这里进行</b>
             <br />
             ① 左栏添加材料 → ②「转换生料」整理成标准 Markdown → ③「生成 PDF」排成小抄。
@@ -79,7 +80,7 @@ export default function ChatStream() {
             title="对所有勾选且未转换的材料按序逐个跑 AI 结构化（每份一张卡）"
             onClick={() => void convertAllRaw()}
           >
-            {state.converting ? '转换中…' : `🪄 转换生料${rawCount > 0 ? `（${rawCount}）` : ''}`}
+            {state.converting ? '转换中…' : `转换生料${rawCount > 0 ? `（${rawCount}）` : ''}`}
           </button>
           <button
             type="button"

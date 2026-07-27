@@ -1,0 +1,208 @@
+/* NotebookLM 观感的 token 与 DS 组件类(2026-07-27 用户拍板全面替换 Organic 皮)。
+   类名与此前 organic.css 完全一致(.btn/.tag/.dialog/.input/.field/.table/.seg)——
+   组件零改名,只换视觉参数:白底浅灰、白面板细边框、小圆角、Google 蓝点缀、pill 按钮。
+   色值取 Google Material 亮色域(蓝 #0b57d0 系 / 绿 #137333 系 / 灰 #5f6368 系)。
+   注意:CSS 注释里不能出现「星号斜杠」字符序列(真实判例:注释提前终止吞掉 :root)。 */
+
+:root {
+  --color-bg: #f8fafd;
+  --color-surface: #ffffff;
+  --color-text: #1f1f1f;
+  --color-accent: #0b57d0;
+  --color-accent-2: #137333;
+  --color-divider: #e0e3e7;
+
+  --color-neutral-100: #f1f4f9;
+  --color-neutral-200: #e9eef6;
+  --color-neutral-300: #dde3ea;
+  --color-neutral-400: #c6cdd5;
+  --color-neutral-500: #9aa0a6;
+  --color-neutral-600: #80868b;
+  --color-neutral-700: #5f6368;
+  --color-neutral-800: #3c4043;
+  --color-neutral-900: #202124;
+
+  --color-accent-100: #e8f0fe;
+  --color-accent-200: #d2e3fc;
+  --color-accent-300: #a8c7fa;
+  --color-accent-400: #7cacf8;
+  --color-accent-500: #4285f4;
+  --color-accent-600: #1a73e8;
+  --color-accent-700: #0b57d0;
+  --color-accent-800: #0842a0;
+  --color-accent-900: #062e6f;
+
+  --color-accent-2-100: #e6f4ea;
+  --color-accent-2-200: #ceead6;
+  --color-accent-2-300: #a8dab5;
+  --color-accent-2-400: #81c995;
+  --color-accent-2-500: #34a853;
+  --color-accent-2-600: #1e8e3e;
+  --color-accent-2-700: #137333;
+  --color-accent-2-800: #0d652d;
+  --color-accent-2-900: #0a4620;
+
+  --font-heading: 'Google Sans', 'Roboto', system-ui, sans-serif;
+  --font-heading-weight: 500;
+  --font-body: 'Roboto', system-ui, sans-serif;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.1);
+  --shadow-md: 0 1px 3px rgba(60, 64, 67, 0.12), 0 4px 8px rgba(60, 64, 67, 0.08);
+  --shadow-lg: 0 4px 8px rgba(60, 64, 67, 0.14), 0 12px 28px rgba(60, 64, 67, 0.16);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font-size: 14px; line-height: 1.55; font-weight: 400; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  line-height: 1.2; letter-spacing: 0; margin: 0 0 var(--space-2);
+}
+h1 { font-size: 28px; }
+h2 { font-size: 22px; }
+h3 { font-size: 18px; }
+h4 { font-size: 16px; }
+h5 { font-size: 14px; }
+h6 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--color-accent); text-underline-offset: 3px; }
+img { display: block; max-width: 100%; }
+.text-muted { color: var(--color-neutral-700); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: var(--color-accent-200); }
+
+.hr {
+  height: 1px; border: 0; margin: var(--space-4) 0;
+  background: var(--color-divider);
+}
+
+/* — buttons:pill、Google 风(蓝实心主/描边次/幽灵) — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; text-decoration: none;
+  font-family: var(--font-heading); font-weight: 500;
+  font-size: 13px; line-height: 1.2; color: var(--color-text);
+  background: transparent; border: 1px solid transparent;
+  padding: 8px 16px;
+  border-radius: 999px;
+}
+.btn svg { display: block; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-600); box-shadow: var(--shadow-sm); }
+.btn-primary:active { background: var(--color-accent-800); }
+.btn-secondary { border-color: var(--color-neutral-400); color: var(--color-accent); }
+.btn-secondary:hover:not(:disabled) { background: var(--color-accent-100); }
+.btn-secondary:active { background: var(--color-accent-200); }
+.btn-ghost { color: var(--color-accent); padding-inline: 8px; }
+.btn-ghost:hover { background: var(--color-accent-100); }
+.btn-ghost:active { background: var(--color-accent-200); }
+.btn-icon { width: 34px; height: 34px; padding: 0; }
+.btn-block { width: 100%; margin-top: var(--space-2); }
+
+/* — forms — */
+.field > label {
+  display: block; font-size: 12px; margin-bottom: 4px;
+  color: var(--color-neutral-700);
+}
+.input {
+  width: 100%; min-height: 36px; padding: 6px 12px; font: inherit;
+  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-neutral-400); border-radius: var(--radius-sm);
+}
+.input:hover { border-color: var(--color-neutral-600); }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+textarea.input { min-height: 90px; resize: vertical; }
+.seg {
+  display: inline-flex; overflow: hidden;
+  border: 1px solid var(--color-neutral-400); border-radius: 999px;
+}
+.seg-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; font-size: 13px; cursor: pointer;
+}
+.seg-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-neutral-400); }
+.seg-opt:has(input:checked) { background: var(--color-accent-100); color: var(--color-accent-800); }
+.seg-opt:not(:has(input:checked)):hover { background: var(--color-neutral-100); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* — cards — */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3); border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+}
+.card-title {
+  font-family: var(--font-heading); font-weight: 500;
+  font-size: 15px; line-height: 1.25;
+}
+.card-meta {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: var(--color-neutral-700);
+}
+.elev-sm { box-shadow: var(--shadow-sm); }
+.elev-md { box-shadow: var(--shadow-md); }
+.elev-lg { box-shadow: var(--shadow-lg); }
+
+/* — tags:M3 chip — */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  letter-spacing: 0.01em; padding: 2px 10px;
+  border-radius: 999px;
+}
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+.tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
+.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+
+/* — tables — */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.04em;
+  color: var(--color-neutral-700);
+  padding: var(--space-2); border-bottom: 1px solid var(--color-divider);
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-neutral-100);
+}
+.table tbody tr:hover { background: var(--color-neutral-100); }
+
+/* — dialog:M3 大圆角白面板 — */
+.dialog-backdrop {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: rgba(32, 33, 36, 0.45);
+}
+.dialog {
+  width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-6); border-radius: 24px;
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+}
+.dialog-title {
+  font-family: var(--font-heading); font-weight: 500;
+  font-size: 18px;
+}
+.dialog-body { font-size: 14px; color: var(--color-neutral-800); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }

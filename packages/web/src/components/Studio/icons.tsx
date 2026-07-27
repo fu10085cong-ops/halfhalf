@@ -96,3 +96,24 @@ export const IconChevron = ({ size = 14, style }: { size?: number; style?: CSSPr
     <path d="M9 6l6 6-6 6" />
   </Svg>
 );
+
+/** 勾(转换完成/进度行) */
+export const IconCheck = ({ size = 14, style }: { size?: number; style?: CSSProperties }) => (
+  <Svg size={size} style={style}>
+    <path d="M20 6L9 17l-5-5" />
+  </Svg>
+);
+
+/** 添加 */
+export const IconPlus = ({ size = 16, style }: { size?: number; style?: CSSProperties }) => (
+  <Svg size={size} style={style}>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+);
+
+/** 对话气泡(中栏空态) */
+export const IconChat = ({ size = 17, style }: { size?: number; style?: CSSProperties }) => (
+  <Svg size={size} style={style}>
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </Svg>
+);

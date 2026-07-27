@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../api';
 import type { FixtureInfo } from '../../types';
-import GenerateCard from './GenerateCard';
+import HeroCard from './HeroCard';
 import Modal from './Modal';
 import { IconChevron, IconGear, IconGrid, IconHistory, IconSparkle } from './icons';
 import { AiSettingsPanel, CompressPanel, DiagnosticsPanel, HistoryPanel } from './panels';
@@ -98,9 +98,9 @@ export default function StudioRail() {
 
   return (
     <div className="studio-col is-right">
-      <div className="studio-col-head">成果与功能</div>
+      <div className="studio-col-head">Studio</div>
       <div className="studio-col-body">
-        <GenerateCard />
+        <HeroCard />
         <div className="hh-tiles">
           {TILES.map((t) => {
             const TileIcon = t.icon;

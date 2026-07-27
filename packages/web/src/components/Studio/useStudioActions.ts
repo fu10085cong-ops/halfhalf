@@ -37,8 +37,10 @@ function warnLines(r: SceneResult, targetPages: number): string[] {
 export function useStudioActions() {
   const { state, dispatch } = useStudio();
 
-  /** 转换单个 source：SSE 流式进对话卡，成品写回 source。失败上卡不抛（队列不断） */
-  const convertOne = async (source: Source): Promise<boolean> => {
+  /** 转换单个 source：SSE 流式进对话卡，成品写回 source 并返回产物 Markdown。
+   *  失败上卡不抛、返回 null（队列不断;一键流程对失败份用 raw 兜底继续排） */
+  const convertOne = async (source: Source): Promise<string | null> => {
+    dispatch({ type: 'set_converting_source', id: source.id });
     dispatch({
       type: 'add_message',
       message: { id: newId(), role: 'user', kind: 'text', text: `转换《${source.title}》` },
@@ -70,7 +72,7 @@ export function useStudioActions() {
       // attempt 变化 = 首轮体检不过、AI 在重写——缓冲清空重新累积（SSE 契约见 API.md）
       let attempt = 1;
       let acc = '';
-      let gotResult = false;
+      let resultMd: string | null = null;
       let streamError: string | null = null;
       await consumeSse(resp, (event, data) => {
         if (event === 'delta') {
@@ -89,8 +91,8 @@ export function useStudioActions() {
             patch: { text: `结构体检未过，AI 修正中（${problems.join('、')}）` },
           });
         } else if (event === 'result') {
-          gotResult = true;
           const md = String(data.markdown ?? '');
+          resultMd = md;
           const check = (data.check as unknown as StructurizeCheck) ?? null;
           dispatch({
             type: 'update_source',
@@ -107,15 +109,17 @@ export function useStudioActions() {
         }
       });
       if (streamError) throw new Error(streamError);
-      if (!gotResult) throw new Error('转换中断，未收到最终结果，请重试');
-      return true;
+      if (resultMd === null) throw new Error('转换中断，未收到最终结果，请重试');
+      return resultMd;
     } catch (e) {
       dispatch({
         type: 'update_message',
         id: cardId,
         patch: { phase: 'error', error: e instanceof Error ? e.message : String(e) },
       });
-      return false;
+      return null;
+    } finally {
+      dispatch({ type: 'set_converting_source', id: null });
     }
   };
 
@@ -151,14 +155,15 @@ export function useStudioActions() {
     });
   };
 
-  /** 生成 PDF：enabled sources 按序拼接 → /api/scene → 结果卡 + 历史/诊断入账 */
-  const generate = async (): Promise<void> => {
-    const combined = combineEnabledMarkdown(state.sources);
+  /** 生成 PDF：enabled sources 按序拼接 → /api/scene → 结果卡 + 历史/诊断入账。
+   *  sourcesOverride:一键流程刚转换完的最新副本——闭包里的 state.sources 是点击时的
+   *  快照,组合动作里直接用会把已转换的份又当生料排(陈旧闭包坑) */
+  const generate = async (sourcesOverride?: Source[]): Promise<void> => {
+    const sources = sourcesOverride ?? state.sources;
+    const combined = combineEnabledMarkdown(sources);
     if (!combined.trim() || state.generating) return;
     const cfg = state.genConfig;
-    const enabledCount = state.sources.filter(
-      (s) => s.enabled && (s.markdown || s.raw).trim()
-    ).length;
+    const enabledCount = sources.filter((s) => s.enabled && (s.markdown || s.raw).trim()).length;
     dispatch({
       type: 'add_message',
       message: {
@@ -305,5 +310,28 @@ export function useStudioActions() {
     }
   };
 
-  return { convertAllRaw, convertSingle, skipAi, generate, sendChat };
+  /** 招牌动作「一键转换并排版」:生料全转（失败份用 raw 兜底）→ 立刻生成 PDF。
+   *  转换产物同步进本地副本再交给 generate——不能依赖闭包里的旧 state（陈旧闭包坑） */
+  const convertAndGenerate = async (): Promise<void> => {
+    if (state.converting || state.generating) return;
+    const updated = state.sources.map((s) => ({ ...s }));
+    const raws = updated.filter((s) => s.enabled && s.status === 'raw' && s.raw.trim());
+    if (raws.length > 0) {
+      dispatch({ type: 'set_converting', value: true });
+      try {
+        for (const s of raws) {
+          const md = await convertOne(s);
+          if (md !== null) {
+            s.markdown = md;
+            s.status = 'converted';
+          }
+        }
+      } finally {
+        dispatch({ type: 'set_converting', value: false });
+      }
+    }
+    await generate(updated);
+  };
+
+  return { convertAllRaw, convertSingle, skipAi, generate, convertAndGenerate, sendChat };
 }

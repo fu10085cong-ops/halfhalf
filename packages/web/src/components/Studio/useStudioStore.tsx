@@ -49,11 +49,12 @@ export interface PdfCardData {
 }
 
 /** 操作流对话的一张卡；convert/pdf/chat 卡随请求推进原地更新（phase）。
- *  kind 'chat' = 自由对话轮（/api/ai/chat）——只有它进对话历史，动作卡不算 */
+ *  kind 'chat' = 自由对话轮（/api/ai/chat）——只有它进对话历史，动作卡不算。
+ *  kind 'guide' = 新生料落卡后的自动引导（转换是产品特色:检测到生料→一键转换/跳过） */
 export interface StudioMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
-  kind: 'text' | 'convert' | 'pdf' | 'chat';
+  kind: 'text' | 'convert' | 'pdf' | 'chat' | 'guide';
   text?: string;
   phase?: 'working' | 'done' | 'error';
   /** convert 卡：目标 source 与流式缓冲；chat 卡也用 preview 做流式缓冲 */
@@ -102,6 +103,8 @@ export interface StudioState {
   pdfOverlay: { url: string; fileName: string } | null;
   /** 队列转换/生成/对话进行中（动作条防重入） */
   converting: boolean;
+  /** 正在转换的 source（招牌卡逐份进度用；非转换期为 null） */
+  convertingSourceId: string | null;
   generating: boolean;
   chatting: boolean;
   lastResult: SceneResult | null;
@@ -122,6 +125,7 @@ export type StudioAction =
   | { type: 'edit_source'; id: string | null }
   | { type: 'set_overlay'; overlay: { url: string; fileName: string } | null }
   | { type: 'set_converting'; value: boolean }
+  | { type: 'set_converting_source'; id: string | null }
   | { type: 'set_generating'; value: boolean }
   | { type: 'set_chatting'; value: boolean }
   | { type: 'record_run'; run: RunRecord; result: SceneResult };
@@ -165,6 +169,8 @@ function reducer(state: StudioState, action: StudioAction): StudioState {
       return { ...state, pdfOverlay: action.overlay };
     case 'set_converting':
       return { ...state, converting: action.value };
+    case 'set_converting_source':
+      return { ...state, convertingSourceId: action.id };
     case 'set_generating':
       return { ...state, generating: action.value };
     case 'set_chatting':
@@ -240,6 +246,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     editingSourceId: null,
     pdfOverlay: null,
     converting: false,
+    convertingSourceId: null,
     generating: false,
     chatting: false,
     lastResult: null,

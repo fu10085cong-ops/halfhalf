@@ -1,9 +1,10 @@
 /**
- * 右栏生成主卡（常驻）：目标页数 + 生成按钮;场景/学科/方向/边距/乱序/伸展/网格全部
- * 折叠进「高级选项」——应急路径只留一个决策点（目标页数）。
+ * 右栏招牌卡「转换 · 排版」——产品特色的门面(类比 NotebookLM 的 Audio Overview 地位)。
+ * 一键转换并排版:生料全转(失败份用原文兜底)→ 自动生成 PDF;运行中逐份进度可视化。
+ * 目标页数与高级选项(场景/学科/方向/边距/开关)也收在这张卡里——右栏只有一个主入口。
  */
 import type { SceneId } from '../../types';
-import { IconFile } from './icons';
+import { IconCheck, IconSparkle } from './icons';
 import { useStudio } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
@@ -25,19 +26,46 @@ const SUBJECT_OPTIONS: { value: string; label: string }[] = [
   { value: 'politics', label: '政治/毛概/马原' },
 ];
 
-export default function GenerateCard() {
+export default function HeroCard() {
   const { state, dispatch } = useStudio();
-  const { generate } = useStudioActions();
+  const { convertAndGenerate } = useStudioActions();
   const cfg = state.genConfig;
   const set = (patch: Partial<typeof cfg>) => dispatch({ type: 'set_config', patch });
-  const enabledCount = state.sources.filter((s) => s.enabled && (s.markdown || s.raw).trim()).length;
+
+  const enabled = state.sources.filter((s) => s.enabled && (s.markdown || s.raw).trim());
+  const rawCount = enabled.filter((s) => s.status === 'raw').length;
+  const busy = state.converting || state.generating;
+
+  const statusLine =
+    enabled.length === 0
+      ? '先在左栏添加材料'
+      : rawCount > 0
+        ? `${enabled.length} 份材料参与 · 其中 ${rawCount} 份生料待转换`
+        : `${enabled.length} 份材料参与 · 全部已是标准 Markdown`;
+
+  const buttonLabel = state.converting
+    ? '转换中…'
+    : state.generating
+      ? '排版中…'
+      : rawCount > 0
+        ? '一键转换并排版'
+        : '生成 PDF';
+
+  /** 进度行右侧标签:转换阶段看 status/当前份;排版阶段还没转成的 = 原文兜底 */
+  const rowState = (s: (typeof enabled)[number]): { icon: 'done' | 'spin' | 'wait' | 'fallback'; label: string } => {
+    if (s.status === 'converted') return { icon: 'done', label: '已转换' };
+    if (state.convertingSourceId === s.id) return { icon: 'spin', label: '转换中…' };
+    if (state.generating) return { icon: 'fallback', label: '原文兜底' };
+    return { icon: 'wait', label: '待转换' };
+  };
 
   return (
-    <div className="hh-gen-card">
-      <b style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <IconFile style={{ color: 'var(--color-accent-700)' }} /> 生成 PDF
-      </b>
-      <div className="text-muted" style={{ fontSize: 12 }}>勾选的 {enabledCount} 份材料按序拼成一份小抄</div>
+    <div className="hh-hero-card">
+      <div className="hh-hero-title">
+        <IconSparkle />
+        转换 · 排版
+      </div>
+      <div className="hh-hero-status">{statusLine}</div>
       <div className="hh-gen-row">
         <label>
           目标页数
@@ -50,22 +78,45 @@ export default function GenerateCard() {
               // 清空/非法输入兜底到 1，钳在服务端校验的 1~50 区间
               set({ targetPages: Math.min(50, Math.max(1, parseInt(e.target.value) || 1)) })
             }
-            style={{ width: 52, marginLeft: 4 }}
+            style={{ marginLeft: 4 }}
           />
         </label>
         <button
           type="button"
           className="btn btn-primary"
-          disabled={state.generating || enabledCount === 0}
-          onClick={() => void generate()}
+          disabled={busy || enabled.length === 0}
+          title="生料先转换成标准 Markdown（失败的用原文兜底），随后自动排版"
+          onClick={() => void convertAndGenerate()}
         >
-          {state.generating ? '排版中…' : '生成'}
+          {buttonLabel}
         </button>
       </div>
+      {busy && enabled.length > 0 && (
+        <div className="hh-hero-progress">
+          {enabled.map((s) => {
+            const st = rowState(s);
+            return (
+              <div key={s.id} className="hh-prog-row">
+                {st.icon === 'done' && <IconCheck size={12} style={{ color: 'var(--color-accent-2-600)' }} />}
+                {st.icon === 'spin' && <span className="hh-spin" />}
+                {(st.icon === 'wait' || st.icon === 'fallback') && (
+                  <span style={{ width: 12, textAlign: 'center', color: 'var(--color-neutral-500)' }}>·</span>
+                )}
+                <span className="hh-prog-title">{s.title}</span>
+                <span className={st.icon === 'fallback' ? 'hh-msg-warn' : 'text-muted'}>{st.label}</span>
+              </div>
+            );
+          })}
+          {state.generating && (
+            <div className="hh-prog-row">
+              <span className="hh-spin" />
+              <span className="hh-prog-title">排版中（二分搜索字号）…</span>
+            </div>
+          )}
+        </div>
+      )}
       <details className="hh-advanced">
-        <summary>
-          高级选项（场景/学科/边距…）
-        </summary>
+        <summary>高级选项（场景/学科/边距…）</summary>
         <label>
           场景
           <select value={cfg.scene} onChange={(e) => set({ scene: e.target.value as SceneId | 'auto' })}>
