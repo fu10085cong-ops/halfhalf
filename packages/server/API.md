@@ -4,7 +4,7 @@
 本文档只是把它翻译成带示例的说明——如果两者不一致，以代码为准。
 
 - Base URL：本地开发默认 `http://localhost:3000`
-- 所有请求/响应 body 都是 `application/json`，除了 `/api/import/document`（`multipart/form-data`）、SSE 接口（`/api/ai/structurize`、`/api/ai/compress`）和 PDF 下载（二进制流）
+- 所有请求/响应 body 都是 `application/json`，除了文件上传 `/api/import/jobs`（`multipart/form-data`）、SSE 接口（`/api/ai/structurize`、`/api/ai/compress`）和 PDF 下载（二进制流）
 - 鉴权：设置了环境变量 `HALFHALF_ACCESS_CODE` 时，所有 `/api/*` 请求须带 `x-access-code` 头（`/api/health` 放行）；未设置则公开可访问
 - 时间字段（`timestamp`）统一是 `Date.now()` 的毫秒时间戳
 
@@ -37,14 +37,28 @@ interface ApiErrorResponse {
 
 ---
 
-## `POST /api/import/document`
+## `POST /api/import/jobs`（异步导入）
 
-把 Word 或 PDF 转成可编辑 Markdown。请求必须是 `multipart/form-data`，文件字段名为 `file`；只在内存中处理，不写入服务器磁盘。
+同样是 `multipart/form-data`，但立刻返回 `202` 和任务快照，解析在后台进行——大 PDF 不会把 HTTP 连接挂死。
 
-- 支持 `.docx` 和文字型 `.pdf`，单文件最大 20 MB、PDF 最大 300 页。
-- `.doc` 返回 `415 UNSUPPORTED_FILE`；扫描/图片型 PDF 返回 `422 OCR_REQUIRED`，不会返回空白成功。
+请求头 `x-halfhalf-client` 携带浏览器生成的匿名客户端 ID，用于任务归属、配额和历史连续性。
+**它不是登录认证**：拿到别人的 ID 就能读到对方的任务，正式账号归属属于后续工作。
 
-### 响应 `200`
+| 端点 | 作用 |
+|------|------|
+| `POST /api/import/jobs` | 提交任务，`202` 返回 `{ jobId, status, stage, progress, message, ... }` |
+| `GET /api/import/jobs/:jobId` | 查询进度；`status === 'completed'` 时带上完整 `result` |
+| `GET /api/import/jobs` | 当前客户端最近任务的轻量历史，**不内嵌页面图**，打开某个任务时才取完整结果 |
+| `DELETE /api/import/jobs/:jobId` | 取消排队中或运行中的任务 |
+| `GET /api/import/jobs/limits` | 查询当前生效的并发、配额、保留期和是否已启用持久化 |
+
+`status`：`queued` / `running` / `completed` / `failed` / `cancelled`。
+`stage`：`queued` / `extracting` / `rendering` / `finalizing` / `completed`。
+
+支持 `.docx` 和文字型 `.pdf`，单文件最大 20 MB、PDF 最大 300 页；文件只在内存中处理，不落服务器磁盘。
+`.doc` 返回 `415 UNSUPPORTED_FILE`；扫描/图片型 PDF 任务以 `422 OCR_REQUIRED` 失败，不会伪造成功。
+
+`status === 'completed'` 时 `result` 的形状：
 
 ```ts
 {
@@ -67,30 +81,7 @@ interface ApiErrorResponse {
 }
 ```
 
-常见错误码：`FILE_TOO_LARGE`、`INVALID_DOCX`、`INVALID_PDF`、`PASSWORD_PROTECTED`、`TOO_MANY_PAGES`、`OCR_REQUIRED`、`PDF_VISUAL_RENDER_FAILED`。检测信息（例如扫描件页数）放在可选的 `details` 中。
-
-这个端点是同步的，跟异步队列共享同一份并发额度；服务器正忙时返回 `429 IMPORT_BUSY`，
-批量或大文件请改用下面的 `/api/import/jobs`。
-
----
-
-## `POST /api/import/jobs`（异步导入）
-
-同样是 `multipart/form-data`，但立刻返回 `202` 和任务快照，解析在后台进行——大 PDF 不会把 HTTP 连接挂死。
-
-请求头 `x-halfhalf-client` 携带浏览器生成的匿名客户端 ID，用于任务归属、配额和历史连续性。
-**它不是登录认证**：拿到别人的 ID 就能读到对方的任务，正式账号归属属于后续工作。
-
-| 端点 | 作用 |
-|------|------|
-| `POST /api/import/jobs` | 提交任务，`202` 返回 `{ jobId, status, stage, progress, message, ... }` |
-| `GET /api/import/jobs/:jobId` | 查询进度；`status === 'completed'` 时带上完整 `result` |
-| `GET /api/import/jobs` | 当前客户端最近任务的轻量历史，**不内嵌页面图**，打开某个任务时才取完整结果 |
-| `DELETE /api/import/jobs/:jobId` | 取消排队中或运行中的任务 |
-| `GET /api/import/jobs/limits` | 查询当前生效的并发、配额、保留期和是否已启用持久化 |
-
-`status`：`queued` / `running` / `completed` / `failed` / `cancelled`。
-`stage`：`queued` / `extracting` / `rendering` / `finalizing` / `completed`。
+常见任务错误码：`FILE_TOO_LARGE`、`INVALID_DOCX`、`INVALID_PDF`、`PASSWORD_PROTECTED`、`TOO_MANY_PAGES`、`OCR_REQUIRED`、`PDF_VISUAL_RENDER_FAILED`。
 
 超配额返回 `429 IMPORT_OWNER_LIMIT` 或 `429 IMPORT_QUEUE_FULL`。
 设置 `HALFHALF_DATA_DIR` 后，任务快照和已完成结果用原子文件写入并可跨进程重启恢复；
@@ -115,7 +106,7 @@ interface ApiErrorResponse {
 ## `POST /api/import/url`
 
 网页链接 → 正文抽取（Readability，小页面退回剥壳 fallback）→ Markdown。响应与
-`/api/import/document` 同形（`summary.kind = 'url'`，另带 `sourceUrl` 最终地址）。
+异步导入任务的 `result` 同形（`summary.kind = 'url'`，另带 `sourceUrl` 最终地址）。
 网页内容只在本次请求内存中处理；网页图片不导入（仅文本）。
 
 ### 请求 body

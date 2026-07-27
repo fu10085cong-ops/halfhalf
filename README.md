@@ -262,7 +262,7 @@ function findOptimalFontSize(markdown, targetPages):
 | `POST /api/ai/chat` | 多轮材料对话(SSE,服务端无状态) |
 | `POST /api/ai/compress` | ① 语义级精简建议(只出建议) |
 | `POST /api/ai/proxy` | 通用 BYOK 转发(域名白名单) |
-| `POST /api/import/document` `POST /api/import/jobs` `POST /api/import/url` | 同步导入 / 异步导入任务 / 网页导入 |
+| `POST /api/import/jobs` `POST /api/import/url` | 异步导入任务 / 网页导入 |
 | `POST /api/restructure/plan` `…/materialize` | 先出可审计计划,确认后确定性应用 |
 
 错误响应统一 `{ error, code?, details? }`,SSE 的 `error` 事件同形。

@@ -285,7 +285,7 @@ export interface RestructurePlan {
   warnings: string[];
 }
 
-/** POST /api/import/document、/api/import/url、/api/research/jobs 的产出。 */
+/** /api/import/jobs、/api/import/url、/api/research/jobs 的产出。 */
 export type ImportedDocumentKind = 'docx' | 'pdf' | 'url' | 'research';
 
 /** 一条搜索结果。SearchProvider 的统一输出形状，与具体厂商解耦。 */
