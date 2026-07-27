@@ -26,8 +26,15 @@ export interface DocumentQualityReport {
   pages: DocumentQualityPage[];
 }
 
+/** 联网检索采纳的来源，供前端展示与用户回查。 */
+export interface ResearchSource {
+  url: string;
+  domain: string;
+  title: string;
+}
+
 export interface DocumentImportSummary {
-  kind: 'docx' | 'pdf' | 'url';
+  kind: 'docx' | 'pdf' | 'url' | 'research';
   originalName: string;
   sizeBytes: number;
   characterCount: number;
@@ -39,6 +46,8 @@ export interface DocumentImportSummary {
   textPageCount?: number;
   sourceUrl?: string;
   quality?: DocumentQualityReport;
+  /** 仅 kind === 'research' 时产出 */
+  sources?: ResearchSource[];
   warnings: string[];
 }
 
@@ -169,7 +178,14 @@ export async function importDocument(
   const submitted = await apiFetch('/api/import/jobs', { method: 'POST', body: form });
   const created = await readJson<JobSnapshot & ErrorResponse>(submitted);
   if (!submitted.ok || !created.jobId) return failureFrom(created, submitted.status);
+  return pollJob(created, options);
+}
 
+/**
+ * 提交之后的公共部分：报首帧进度、挂取消、轮询到终态。
+ * 上传文件与联网补洞共用——服务端本来就是同一条队列、同一组查询端点。
+ */
+async function pollJob(created: JobSnapshot, options: ImportOptions): Promise<ImportOutcome> {
   options.onProgress?.({
     progress: created.progress ?? 0,
     stage: created.stage ?? 'queued',
@@ -229,6 +245,25 @@ export async function listRecentImports(limit = 5): Promise<ImportJobListEntry[]
   if (!response.ok) return [];
   const data = await readJson<{ jobs?: ImportJobListEntry[] }>(response);
   return data.jobs ?? [];
+}
+
+/**
+ * 提交一个不带文件的任务（联网补洞用），之后共用同一套轮询。
+ * 研究任务与导入任务在服务端是同一条队列，所以查询端点也是同一个。
+ */
+export async function submitJsonJob(
+  endpoint: string,
+  body: unknown,
+  options: ImportOptions = {}
+): Promise<ImportOutcome> {
+  const submitted = await apiFetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const created = await readJson<JobSnapshot & ErrorResponse>(submitted);
+  if (!submitted.ok || !created.jobId) return failureFrom(created, submitted.status);
+  return pollJob(created, options);
 }
 
 /** 打开某条历史时才取完整结果（列表里没有 result，页面图不会预先下载）。 */

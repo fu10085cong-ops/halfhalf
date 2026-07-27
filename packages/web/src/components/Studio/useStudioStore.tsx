@@ -97,7 +97,14 @@ export interface RunRecord {
 }
 
 /** 居中弹窗（Organic 弹窗语言）：同一时刻只开一个 */
-export type StudioModal = 'compress' | 'diagnostics' | 'history' | 'settings' | 'focus' | null;
+export type StudioModal =
+  | 'compress'
+  | 'diagnostics'
+  | 'history'
+  | 'settings'
+  | 'focus'
+  | 'research'
+  | null;
 
 export interface StudioState {
   sources: Source[];
