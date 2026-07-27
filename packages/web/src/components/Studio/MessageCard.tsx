@@ -2,21 +2,29 @@
  * 对话流单卡：user 文本气泡 / convert 转换卡（流式预览+体检结论）/ pdf 结果卡（指标+预览/下载）。
  * convert/pdf 卡由动作随 phase 原地更新。
  */
-import { IconAlert, IconCheck } from './icons';
+import { IconAlert, IconCheck, IconGear, IconSliders, IconSparkle } from './icons';
 import { useStudio, type StudioMessage } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
 function ConvertCard({ msg }: { msg: StudioMessage }) {
   return (
     <>
-      <b>🪄 转换《{msg.sourceTitle}》</b>
+      <b>
+        <IconSparkle size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+        转换《{msg.sourceTitle}》
+      </b>
       {msg.phase === 'working' && (
         <span style={{ color: '#1d4ed8' }}>
           {' '}
           {msg.attempt && msg.attempt > 1 ? `修正轮转换中…` : 'AI 转换中…'}
         </span>
       )}
-      {msg.text && <div style={{ color: '#1d4ed8' }}>⚙️ {msg.text}</div>}
+      {msg.text && (
+        <div style={{ color: '#1d4ed8' }}>
+          <IconGear size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
+          {msg.text}
+        </div>
+      )}
       {msg.error && <div className="hh-msg-err">转换出错：{msg.error}</div>}
       {msg.preview && <pre className="hh-msg-stream">{msg.preview}</pre>}
       {msg.phase === 'done' && msg.check && (
@@ -39,7 +47,12 @@ function ConvertCard({ msg }: { msg: StudioMessage }) {
 function PdfCard({ msg }: { msg: StudioMessage }) {
   const { dispatch } = useStudio();
   if (msg.phase === 'working') {
-    return <span style={{ color: '#1d4ed8' }}>📐 排版中…（二分搜索字号，通常几秒到几十秒）</span>;
+    return (
+      <span style={{ color: '#1d4ed8' }}>
+        <IconSliders size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+        排版中…（二分搜索字号，通常几秒到几十秒）
+      </span>
+    );
   }
   if (msg.phase === 'error' || !msg.pdf) {
     return <span className="hh-msg-err">生成失败：{msg.error ?? '未知错误'}</span>;

@@ -2,6 +2,7 @@
  * 中栏 source 编辑视图（点材料卡进入）：改标题/内容、AI 转换这份、跳过 AI、删除。
  * 编辑的是"当前生效文本"——已转换的编辑 markdown（原文 raw 保留可另看），生料编辑 raw。
  */
+import { IconSparkle } from './icons';
 import { useStudio, type Source } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
@@ -66,7 +67,8 @@ export default function SourceEditor({ source }: { source: Source }) {
               void convertSingle(source);
             }}
           >
-            {editingConverted ? '🪄 重新转换（从原文）' : '🪄 AI 转换这份'}
+            <IconSparkle size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+            {editingConverted ? '重新转换（从原文）' : 'AI 转换这份'}
           </button>
           {!editingConverted && (
             <button

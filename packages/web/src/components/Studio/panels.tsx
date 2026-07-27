@@ -13,7 +13,7 @@ import type {
   RestructurePlan,
 } from '../../types/restructure';
 import { AI_DEFAULTS, AI_KEYS, byokProvider, lsGet, lsSet } from './aiConfig';
-import { IconAlert, IconCheck } from './icons';
+import { IconAlert, IconCheck, IconLock, IconScale } from './icons';
 import { makeSource, useStudio } from './useStudioStore';
 
 /** 能否勾选应用：非跳过、有实际改动、原子/公式安全网都过 */
@@ -197,7 +197,14 @@ export function DiagnosticsPanel() {
       </div>
       {(r.trace ?? []).map((e, i) => (
         <div key={i} style={{ color: e.kind === 'adjudication' ? '#7c3aed' : '#555' }}>
-          {e.kind === 'hard' ? '🔒' : e.kind === 'adjudication' ? '⚖️' : '·'} [{e.rule}] {e.detail}
+          {e.kind === 'hard' ? (
+            <IconLock size={11} style={{ verticalAlign: '-1px' }} />
+          ) : e.kind === 'adjudication' ? (
+            <IconScale size={11} style={{ verticalAlign: '-1px' }} />
+          ) : (
+            '·'
+          )}{' '}
+          [{e.rule}] {e.detail}
         </div>
       ))}
       {d && (
