@@ -1,0 +1,445 @@
+/* Studio 三栏布局（NotebookLM 骨架,亮色）。
+   高度链纪律:每级滚动容器显式 min-height:0——AppLayout 判例的教训。 */
+
+.studio-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.studio-header {
+  height: 48px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+.studio-header h1 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.5px;
+}
+.studio-header .studio-tagline {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.studio-header .studio-back {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.studio-header .studio-back:hover {
+  color: var(--color-primary);
+}
+
+.studio-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* 三栏都是纵向 flex,内部各自滚动 */
+.studio-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.studio-col-head {
+  flex: none;
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.studio-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+/* ---------- 左栏 Sources ---------- */
+
+.hh-source-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #fff;
+}
+.hh-source-card:hover {
+  border-color: var(--color-primary);
+}
+.hh-source-card.is-disabled {
+  opacity: 0.55;
+}
+.hh-source-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: #eef2ff;
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hh-source-copy {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+.hh-source-copy b {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hh-source-copy small {
+  color: var(--color-text-secondary);
+}
+.hh-source-badge {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+.hh-source-badge.is-raw {
+  background: #fef3c7;
+  color: #92400e;
+}
+.hh-source-badge.is-converted {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.hh-add-menu {
+  position: relative;
+  margin-bottom: 10px;
+}
+.hh-add-menu > button.hh-add-trigger {
+  width: 100%;
+  padding: 7px;
+  border: 1px dashed var(--color-primary);
+  border-radius: 6px;
+  background: #eef2ff;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 13px;
+}
+.hh-add-options {
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.hh-add-options button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: #fff;
+  font-size: 13px;
+}
+.hh-add-options button:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+.hh-add-options button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+.hh-paste-modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px;
+  resize: vertical;
+}
+
+/* ---------- 中栏 对话流 ---------- */
+
+.hh-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hh-msg {
+  max-width: 92%;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.hh-msg.is-user {
+  align-self: flex-end;
+  background: var(--color-primary);
+  color: #fff;
+  padding: 7px 12px;
+  border-radius: 12px 12px 2px 12px;
+}
+.hh-msg.is-system {
+  align-self: flex-start;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  padding: 8px 12px;
+  border-radius: 12px 12px 12px 2px;
+  width: 92%;
+}
+.hh-msg pre.hh-msg-stream {
+  margin: 6px 0 0;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow: auto;
+}
+.hh-msg .hh-msg-ok {
+  color: #15803d;
+}
+.hh-msg .hh-msg-warn {
+  color: #b45309;
+}
+.hh-msg .hh-msg-err {
+  color: #b91c1c;
+}
+.hh-pdf-headline {
+  font-size: 14px;
+  font-weight: 700;
+}
+.hh-msg-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.hh-action-bar {
+  flex: none;
+  border-top: 1px solid var(--color-border);
+  padding: 10px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--color-surface);
+}
+.hh-action-bar .hh-action-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.hh-btn-primary {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+.hh-btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+.hh-btn-primary:disabled {
+  background: #c7d2fe;
+  cursor: not-allowed;
+}
+.hh-btn-secondary {
+  padding: 7px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+}
+.hh-btn-secondary:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* ---------- source 编辑视图（中栏切换） ---------- */
+
+.hh-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.hh-editor textarea.hh-editor-text {
+  flex: 1;
+  min-height: 0;
+  font-family: monospace;
+  font-size: 13px;
+  padding: 8px;
+  resize: none;
+}
+.hh-breadcrumb {
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  text-align: left;
+  padding: 0;
+}
+.hh-breadcrumb:hover {
+  color: var(--color-primary);
+}
+
+/* ---------- 右栏 Studio ---------- */
+
+.hh-studio-card {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fff;
+  font-size: 13px;
+}
+.hh-studio-card.is-clickable {
+  cursor: pointer;
+}
+.hh-studio-card.is-clickable:hover {
+  border-color: var(--color-primary);
+}
+.hh-studio-card b.hh-card-title {
+  display: block;
+  margin-bottom: 2px;
+}
+.hh-studio-card small {
+  color: var(--color-text-secondary);
+}
+.hh-gen-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.hh-advanced {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.hh-advanced label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.hh-advanced select {
+  max-width: 170px;
+}
+
+.hh-panel-back {
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+.hh-panel-back:hover {
+  color: var(--color-primary);
+}
+
+/* 诊断/历史的紧凑表 */
+.hh-mini-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+.hh-mini-table th,
+.hh-mini-table td {
+  border: 1px solid #e2e8f0;
+  padding: 2px 5px;
+  text-align: left;
+}
+.hh-mini-table th {
+  background: #f8fafc;
+  white-space: nowrap;
+}
+
+/* ---------- 全屏 PDF 预览层 ---------- */
+
+.hh-pdf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.75);
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+}
+.hh-pdf-overlay-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  padding-bottom: 10px;
+  font-size: 13px;
+}
+.hh-pdf-overlay-head b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hh-pdf-overlay-head a {
+  color: #c7d2fe;
+}
+.hh-pdf-overlay-head button {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #fff;
+  font-size: 20px;
+}
+.hh-pdf-overlay iframe {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 6px;
+  background: #fff;
+}
+
+/* 空状态 */
+.hh-empty {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 8px;
+}

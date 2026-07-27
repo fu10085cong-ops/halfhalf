@@ -38,6 +38,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
         }}>
           半开卷小抄生成器 —— 从材料到可打印 PDF
         </span>
+        {/* Studio 三栏新界面并存入口（成熟后切默认） */}
+        <a
+          href="?ui=studio"
+          style={{
+            marginLeft: 'auto',
+            fontSize: 12,
+            color: 'var(--color-text-secondary)',
+            textDecoration: 'none',
+          }}
+        >
+          ✨ 体验新版 Studio
+        </a>
       </header>
 
       {/* Main Content */}
