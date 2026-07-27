@@ -1,11 +1,33 @@
 /**
- * 文档导入（Word/PDF → /api/import/document → Markdown 提取物）的共用请求层。
- * DocumentDropSurface（旧界面拖放）与 Studio 的添加材料共用；文件仅在服务内存中处理。
+ * 文档导入（Word/PDF → Markdown 提取物）的共用请求层。
+ * DocumentDropSurface（旧界面拖放）与 Studio 的添加材料共用；原始文件不落盘。
+ *
+ * 走异步任务：POST /api/import/jobs 立刻拿任务号，再轮询进度。
+ * 大 PDF 的原页保真渲染动辄十几秒，同步端点会把 HTTP 连接挂死，
+ * 也吃不到取消和「刷新页面后恢复」。同步端点仍在，但只留给外部脚本。
  */
 import { apiFetch } from '../api';
 
+export interface DocumentQualityPage {
+  page: number;
+  characterCount: number;
+  suspiciousCharacterCount: number;
+  suspiciousRatio: number;
+  blockCount: number;
+  route: 'native' | 'hybrid' | 'ocr';
+}
+
+export interface DocumentQualityReport {
+  suspiciousCharacterCount: number;
+  suspiciousRatio: number;
+  nativePageCount: number;
+  hybridPageCount: number;
+  ocrPageCount: number;
+  pages: DocumentQualityPage[];
+}
+
 export interface DocumentImportSummary {
-  kind: 'docx' | 'pdf';
+  kind: 'docx' | 'pdf' | 'url';
   originalName: string;
   sizeBytes: number;
   characterCount: number;
@@ -15,7 +37,25 @@ export interface DocumentImportSummary {
   imageCount: number;
   pageCount?: number;
   textPageCount?: number;
+  sourceUrl?: string;
+  quality?: DocumentQualityReport;
   warnings: string[];
+}
+
+/** 服务端 KnowledgeIR 的结构在 packages/server/src/types/index.ts；这里只当不透明载荷透传。 */
+export interface KnowledgeDocumentPayload {
+  schemaVersion: number;
+  fileHash: string;
+  sourceOrder: 'strict' | 'soft';
+  pageCount?: number;
+  nodes: unknown[];
+  quality?: DocumentQualityReport;
+}
+
+interface ImportedDocumentBody {
+  markdown: string;
+  summary: DocumentImportSummary;
+  knowledge?: KnowledgeDocumentPayload;
 }
 
 interface ErrorResponse {
@@ -28,9 +68,47 @@ interface ErrorResponse {
   };
 }
 
+export type ImportStage = 'queued' | 'extracting' | 'rendering' | 'finalizing' | 'completed';
+export type ImportStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface ImportProgress {
+  progress: number;
+  stage: ImportStage;
+  message: string;
+}
+
 export type ImportOutcome =
-  | { ok: true; markdown: string; summary: DocumentImportSummary }
-  | { ok: false; error: string; errorCode?: string; pageCount?: number };
+  | {
+      ok: true;
+      markdown: string;
+      summary: DocumentImportSummary;
+      knowledge?: KnowledgeDocumentPayload;
+    }
+  | { ok: false; error: string; errorCode?: string; pageCount?: number; cancelled?: boolean };
+
+/** 最近任务列表用的轻量条目——刻意不含 result，页面图不进列表。 */
+export interface ImportJobListEntry {
+  jobId: string;
+  status: ImportStatus;
+  stage: ImportStage;
+  progress: number;
+  message: string;
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  error?: { code: string; message: string };
+}
+
+interface JobSnapshot extends ImportJobListEntry {
+  result?: ImportedDocumentBody;
+}
+
+export interface ImportOptions {
+  onProgress?: (progress: ImportProgress) => void;
+  /** 中断则 DELETE 任务，服务端停掉解析并释放并发额度 */
+  signal?: AbortSignal;
+}
 
 /** 上传前的本地闸：只认 .docx/.pdf（图片走各界面自己的通道） */
 export function unsupportedFileReason(name: string): string | null {
@@ -40,25 +118,124 @@ export function unsupportedFileReason(name: string): string | null {
     : '当前支持 .docx、可复制文字的 PDF 和常见图片。';
 }
 
-export async function importDocument(file: File): Promise<ImportOutcome> {
-  const form = new FormData();
-  form.append('file', file);
-  // apiFetch：部署环境的访问口令头（x-access-code）；FormData 不能手动设 Content-Type
-  const response = await apiFetch('/api/import/document', {
-    method: 'POST',
-    body: form,
-  });
-  const data = (await response.json().catch(() => ({}))) as
-    | { markdown: string; summary: DocumentImportSummary }
-    | ErrorResponse;
-  if (!response.ok || !('markdown' in data)) {
-    const failure = data as ErrorResponse;
+function failureFrom(data: ErrorResponse, status: number): ImportOutcome {
+  return {
+    ok: false,
+    error: data.error || `导入失败（HTTP ${status}）`,
+    errorCode: data.code,
+    pageCount: data.details?.pageCount,
+  };
+}
+
+function outcomeFromSnapshot(snapshot: JobSnapshot): ImportOutcome {
+  if (snapshot.status === 'completed' && snapshot.result) {
     return {
-      ok: false,
-      error: failure.error || `导入失败（HTTP ${response.status}）`,
-      errorCode: failure.code,
-      pageCount: failure.details?.pageCount,
+      ok: true,
+      markdown: snapshot.result.markdown,
+      summary: snapshot.result.summary,
+      knowledge: snapshot.result.knowledge,
     };
   }
-  return { ok: true, markdown: data.markdown, summary: data.summary };
+  if (snapshot.status === 'cancelled') {
+    return { ok: false, error: snapshot.message || '已取消', cancelled: true };
+  }
+  return {
+    ok: false,
+    error: snapshot.error?.message || snapshot.message || '文档解析失败。',
+    errorCode: snapshot.error?.code,
+  };
+}
+
+/** 轮询间隔：前几秒问得勤（小文件秒回），之后退到 1.5s，避免长任务刷爆请求。 */
+function pollDelay(elapsedMs: number): number {
+  if (elapsedMs < 2_000) return 300;
+  if (elapsedMs < 10_000) return 700;
+  return 1_500;
+}
+
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json().catch(() => ({}))) as T;
+}
+
+export async function importDocument(
+  file: File,
+  options: ImportOptions = {}
+): Promise<ImportOutcome> {
+  const form = new FormData();
+  form.append('file', file);
+  // apiFetch 带上访问口令与匿名客户端 ID；FormData 不能手动设 Content-Type
+  const submitted = await apiFetch('/api/import/jobs', { method: 'POST', body: form });
+  const created = await readJson<JobSnapshot & ErrorResponse>(submitted);
+  if (!submitted.ok || !created.jobId) return failureFrom(created, submitted.status);
+
+  options.onProgress?.({
+    progress: created.progress ?? 0,
+    stage: created.stage ?? 'queued',
+    message: created.message || '已进入解析队列',
+  });
+
+  const cancel = () => {
+    void apiFetch(`/api/import/jobs/${created.jobId}`, { method: 'DELETE' }).catch(
+      () => undefined
+    );
+  };
+  if (options.signal?.aborted) {
+    cancel();
+    return { ok: false, error: '已取消', cancelled: true };
+  }
+  options.signal?.addEventListener('abort', cancel, { once: true });
+
+  const startedAt = Date.now();
+  try {
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, pollDelay(Date.now() - startedAt)));
+      if (options.signal?.aborted) return { ok: false, error: '已取消', cancelled: true };
+
+      const polled = await apiFetch(`/api/import/jobs/${created.jobId}`);
+      if (!polled.ok) {
+        const failure = await readJson<ErrorResponse>(polled);
+        return failureFrom(failure, polled.status);
+      }
+
+      const snapshot = await readJson<JobSnapshot>(polled);
+      options.onProgress?.({
+        progress: snapshot.progress,
+        stage: snapshot.stage,
+        message: snapshot.message,
+      });
+      if (snapshot.status !== 'queued' && snapshot.status !== 'running') {
+        return outcomeFromSnapshot(snapshot);
+      }
+
+      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+        cancel();
+        return {
+          ok: false,
+          error: '解析超过 5 分钟仍未完成，已取消。请拆分文件后重试。',
+          errorCode: 'IMPORT_TIMEOUT',
+        };
+      }
+    }
+  } finally {
+    options.signal?.removeEventListener('abort', cancel);
+  }
+}
+
+/** 最近任务：用于刷新页面后把之前导入过的材料找回来。 */
+export async function listRecentImports(limit = 5): Promise<ImportJobListEntry[]> {
+  const response = await apiFetch(`/api/import/jobs?limit=${limit}`);
+  if (!response.ok) return [];
+  const data = await readJson<{ jobs?: ImportJobListEntry[] }>(response);
+  return data.jobs ?? [];
+}
+
+/** 打开某条历史时才取完整结果（列表里没有 result，页面图不会预先下载）。 */
+export async function fetchImportResult(jobId: string): Promise<ImportOutcome> {
+  const response = await apiFetch(`/api/import/jobs/${jobId}`);
+  if (!response.ok) {
+    return failureFrom(await readJson<ErrorResponse>(response), response.status);
+  }
+  return outcomeFromSnapshot(await readJson<JobSnapshot>(response));
 }

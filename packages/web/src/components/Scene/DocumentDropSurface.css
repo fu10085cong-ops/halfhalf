@@ -183,3 +183,70 @@
 .hh-drop-overlay span {
   color: #6366f1;
 }
+
+/* 异步解析进度条。这个文件属于旧界面，notebooklm.css 的 token 只在 Studio 路由
+   才进页面（见 App.tsx 的隔离钉子），所以这里沿用本文件既有的硬编码配色。 */
+.hh-file-progress {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  height: 3px;
+  margin-top: 3px;
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.hh-file-progress > i {
+  display: block;
+  height: 100%;
+  background: #2563eb;
+  border-radius: inherit;
+  transition: width 0.25s ease-out;
+}
+
+/* 解析中把「×」换成「取消」：同一个位置，但字号回到正文档 */
+.hh-attachment.is-processing .hh-dismiss-file {
+  padding: 0 4px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.hh-recent-imports {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.hh-recent-imports > small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.hh-recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hh-recent-list button {
+  overflow: hidden;
+  max-width: 200px;
+  padding: 3px 8px;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #dbe2ea;
+  border-radius: 999px;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hh-recent-list button:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.hh-recent-list button:disabled {
+  opacity: 0.55;
+}

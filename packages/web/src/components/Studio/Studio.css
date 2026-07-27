@@ -627,3 +627,168 @@
 .hh-msg-err {
   color: #b3261e;
 }
+
+/* ---------- 添加材料：异步导入进度（token 见 notebooklm.css） ---------- */
+.hh-upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.hh-upload-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hh-upload-line > span {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hh-upload-line > button {
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.hh-upload-line > button:hover {
+  color: var(--color-accent);
+}
+
+.hh-upload-bar {
+  display: block;
+  overflow: hidden;
+  height: 3px;
+  background: var(--color-neutral-200);
+  border-radius: 999px;
+}
+
+.hh-upload-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transition: width 0.25s ease-out;
+}
+
+/* ---------- 重点规划面板 ---------- */
+.hh-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.hh-focus-stat {
+  font-size: 12px;
+}
+
+.hh-focus-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hh-focus-field > span {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hh-focus-field textarea,
+.hh-focus-field input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-divider);
+  border-radius: 6px;
+  font: inherit;
+  resize: vertical;
+}
+
+.hh-focus-field textarea:focus,
+.hh-focus-field input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.hh-focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hh-focus-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hh-focus-summary > span {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--color-neutral-100);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.hh-focus-warnings {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.hh-focus-preview {
+  overflow: auto;
+  max-height: 320px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.hh-focus-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--color-neutral-100);
+  font-size: 12px;
+}
+
+.hh-focus-tag {
+  flex: none;
+  min-width: 34px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-neutral-200);
+  text-align: center;
+  font-size: 11px;
+}
+
+.hh-focus-row.is-must .hh-focus-tag {
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+}
+
+.hh-focus-row.is-omit .hh-focus-tag {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-600);
+}
+
+.hh-focus-reason {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hh-focus-anchor {
+  flex: none;
+  font-size: 11px;
+}

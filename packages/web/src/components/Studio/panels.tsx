@@ -1,10 +1,16 @@
 /**
- * 居中弹窗的面板内容（精简 / 诊断 / 历史 / AI 设置）——由 StudioRail 的瓦片打开。
+ * 居中弹窗的面板内容（精简 / 诊断 / 历史 / AI 设置 / 重点规划）——由 StudioRail 的瓦片打开。
  * 精简作用域 = 单个已转换 source（spec 已拍;组合级 range 映射是坑,二期再说）。
  */
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../api';
 import type { AiCompressResponse, AiCompressSummary, BlockSuggestion } from '../../types';
+import type {
+  FocusPriority,
+  FocusSpec,
+  MaterializeResult,
+  RestructurePlan,
+} from '../../types/restructure';
 import { AI_DEFAULTS, AI_KEYS, byokProvider, lsGet, lsSet } from './aiConfig';
 import { useStudio } from './useStudioStore';
 
@@ -374,6 +380,229 @@ export function AiSettingsPanel() {
         <input type="password" className="input" value={key} placeholder="sk-..."
           onChange={(e) => { setKey(e.target.value); lsSet(AI_KEYS.key, e.target.value); }} />
       </div>
+    </div>
+  );
+}
+
+// ---------- 重点规划（重构计划 → 确认后应用 → 可撤销） ----------
+
+function splitTopics(value: string): string[] {
+  return value
+    .split(/[,;\n，；]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+const PRIORITY_LABEL: Record<FocusPriority, string> = {
+  must: '必留',
+  key: '重点',
+  supporting: '辅助',
+  omit: '忽略',
+};
+
+/**
+ * 只对带 KnowledgeIR 的材料可用（目前 = PDF 导入）。
+ * 先出可审计计划、由用户确认后才应用，应用后保留撤销——不自动改用户的材料。
+ */
+export function FocusPanel() {
+  const { state, dispatch } = useStudio();
+  const planned = state.sources.find((s) => s.knowledge && s.enabled) ?? null;
+
+  const [goal, setGoal] = useState('');
+  const [keyTopics, setKeyTopics] = useState('');
+  const [omitTopics, setOmitTopics] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<RestructurePlan | null>(null);
+  const [before, setBefore] = useState<string | null>(null);
+
+  if (!planned?.knowledge) {
+    return (
+      <div className="hh-empty">
+        还没有带来源锚点的材料。导入一份 PDF 后，这里可以按「必须保留 / 希望忽略」生成
+        可核对的重构计划。粘贴文本和网页抓取暂不产出知识节点。
+      </div>
+    );
+  }
+
+  const document = planned.knowledge;
+  const sourceMarkdown = planned.markdown || planned.raw;
+
+  const generatePlan = async () => {
+    const mustQueries = splitTopics(keyTopics);
+    const omitQueries = splitTopics(omitTopics);
+    if (!goal.trim() && mustQueries.length === 0) {
+      setError('请先写明使用目的，或至少一个重点。');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setBefore(null);
+    try {
+      const focus: FocusSpec = {
+        goal: goal.trim(),
+        targetPages: state.genConfig.targetPages,
+        minFontPt: 8,
+        defaultExplanationDepth: 'brief',
+        topics: [
+          ...mustQueries.map((query) => ({
+            query,
+            priority: 'must' as const,
+            explanationDepth: 'deep' as const,
+          })),
+          ...omitQueries.map((query) => ({
+            query,
+            priority: 'omit' as const,
+            explanationDepth: 'none' as const,
+          })),
+        ],
+      };
+      const resp = await apiFetch('/api/restructure/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document, focus }),
+      });
+      const data = (await resp.json()) as RestructurePlan | { error?: string };
+      if (!resp.ok || !('decisions' in data)) {
+        throw new Error(('error' in data && data.error) || `HTTP ${resp.status}`);
+      }
+      setPlan(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyPlan = async () => {
+    if (!plan) return;
+    setApplying(true);
+    setError(null);
+    try {
+      const snapshot = sourceMarkdown;
+      const resp = await apiFetch('/api/restructure/materialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document, plan, sourceMarkdown: snapshot }),
+      });
+      const data = (await resp.json()) as MaterializeResult | { error?: string };
+      if (!resp.ok || !('markdown' in data)) {
+        throw new Error(('error' in data && data.error) || `HTTP ${resp.status}`);
+      }
+      setBefore(snapshot);
+      dispatch({ type: 'update_source', id: planned.id, patch: { markdown: data.markdown, status: 'converted' } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const undo = () => {
+    if (before === null) return;
+    dispatch({ type: 'update_source', id: planned.id, patch: { markdown: before } });
+    setBefore(null);
+  };
+
+  const preview = plan?.decisions.filter((d) => d.priority !== 'supporting').slice(0, 40) ?? [];
+
+  return (
+    <div className="hh-focus">
+      <div className="text-muted hh-focus-stat">
+        {planned.title} · {document.nodes.length} 个知识节点 / {document.pageCount ?? 0} 页
+        {document.quality?.hybridPageCount
+          ? ` · ${document.quality.hybridPageCount} 页需混合公式识别`
+          : ''}
+      </div>
+
+      <label className="hh-focus-field">
+        <span>你想怎么使用这份资料？</span>
+        <textarea
+          rows={2}
+          value={goal}
+          placeholder="例：考前复习，重点说明边界条件的物理意义，例题只留方法"
+          onChange={(e) => setGoal(e.target.value)}
+        />
+      </label>
+      <label className="hh-focus-field">
+        <span>必须保留 / 重点说明</span>
+        <input
+          value={keyTopics}
+          placeholder="例：麦克斯韦方程，边界条件"
+          onChange={(e) => setKeyTopics(e.target.value)}
+        />
+      </label>
+      <label className="hh-focus-field">
+        <span>希望忽略</span>
+        <input
+          value={omitTopics}
+          placeholder="例：教师信息，重复推导"
+          onChange={(e) => setOmitTopics(e.target.value)}
+        />
+      </label>
+
+      <div className="hh-focus-actions">
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void generatePlan()}>
+          {busy ? '正在分析重点…' : '生成重构计划'}
+        </button>
+        {plan && (
+          <button type="button" className="btn" disabled={applying} onClick={() => void applyPlan()}>
+            {applying ? '正在应用…' : '应用这份计划'}
+          </button>
+        )}
+        {before !== null && (
+          <button type="button" className="btn" onClick={undo}>
+            撤销本次重构
+          </button>
+        )}
+      </div>
+
+      {error && <div className="hh-msg-err">{error}</div>}
+
+      {plan && (
+        <>
+          <div className="hh-focus-summary">
+            {(['must', 'key', 'supporting', 'omit'] as FocusPriority[]).map((p) => (
+              <span key={p}>
+                {PRIORITY_LABEL[p]}
+                <b>
+                  {p === 'must'
+                    ? plan.summary.mustKeep
+                    : p === 'key'
+                      ? plan.summary.key
+                      : p === 'supporting'
+                        ? plan.summary.supporting
+                        : plan.summary.omitted}
+                </b>
+              </span>
+            ))}
+            <span>
+              原图兜底<b>{plan.summary.visualFallbacks}</b>
+            </span>
+          </div>
+          {plan.warnings.length > 0 && (
+            <div className="text-muted hh-focus-warnings">
+              {plan.warnings.map((w, i) => (
+                <div key={i}>· {w}</div>
+              ))}
+            </div>
+          )}
+          <div className="hh-focus-preview">
+            {preview.map((d) => (
+              <div key={d.nodeId} className={`hh-focus-row is-${d.priority}`}>
+                <span className="hh-focus-tag">{PRIORITY_LABEL[d.priority]}</span>
+                <span className="hh-focus-reason" title={d.reason}>
+                  {d.reason}
+                </span>
+                <span className="text-muted hh-focus-anchor">
+                  {d.sourceAnchors[0]?.page ? `第 ${d.sourceAnchors[0].page} 页` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
