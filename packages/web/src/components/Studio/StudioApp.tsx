@@ -21,6 +21,7 @@ function StudioShell() {
 
   return (
     <DocumentDropSurface
+      guideHint="文档提取后落成左栏材料卡，转换成标准 Markdown 后参与排版；图片直接可用。文件仅在本机服务内存中处理"
       onMarkdownImport={(markdown, summary) => {
         dispatch({
           type: 'add_source',
