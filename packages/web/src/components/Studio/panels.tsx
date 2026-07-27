@@ -107,7 +107,7 @@ export function CompressPanel() {
         把一份材料的叙述性文字改写成要点式——只出建议，勾选后「应用」才写回。公式/代码/表格/图片不会被动。
       </div>
       {candidates.length === 0 ? (
-        <div className="hh-empty">没有已转换的材料——先在对话流里「转换生料」（或对材料「跳过 AI」）。</div>
+        <div className="hh-empty">没有已转换的材料——先在对话流里「转换生料」。</div>
       ) : (
         <>
           <select
@@ -435,8 +435,17 @@ export function FocusPanel() {
     );
   }
 
+  // 统一输入闸:重构算子是确定性的保留/剔除,不能把未经 AI 转换的生料漂白成 converted
+  if (planned.status === 'raw') {
+    return (
+      <div className="hh-empty">
+        《{planned.title}》还是生料——先在对话流里转换成标准 Markdown，再来做重点规划。
+      </div>
+    );
+  }
+
   const document = planned.knowledge;
-  const sourceMarkdown = planned.markdown || planned.raw;
+  const sourceMarkdown = planned.markdown;
 
   const generatePlan = async () => {
     const mustQueries = splitTopics(keyTopics);
@@ -500,7 +509,8 @@ export function FocusPanel() {
         throw new Error(('error' in data && data.error) || `HTTP ${resp.status}`);
       }
       setBefore(snapshot);
-      dispatch({ type: 'update_source', id: planned.id, patch: { markdown: data.markdown, status: 'converted' } });
+      // 输入必已 converted(上方生料拦截),这里只更新内容不改身份
+      dispatch({ type: 'update_source', id: planned.id, patch: { markdown: data.markdown } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

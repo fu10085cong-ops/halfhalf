@@ -69,7 +69,8 @@ export default function ChatStream() {
             <span className="hh-empty-icon" aria-hidden="true"><IconChat size={26} /></span>
             <b>转换、排版、提问都在这里进行</b>
             <br />
-            ① 左栏添加材料 → ②「转换生料」整理成标准 Markdown → ③「生成 PDF」排成小抄。
+            ① 左栏添加材料 → ②「转换生料」统一整理成标准 Markdown → ③「生成
+            PDF」排成小抄（未转换的生料会自动先转换）。
             <br />
             也可以直接在下方输入框问材料相关的问题、让 AI 改写某一节。
           </div>
@@ -154,11 +155,11 @@ export default function ChatStream() {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={state.generating || enabledCount === 0}
-            title="把勾选的材料按序拼接排版"
+            disabled={state.generating || state.converting || enabledCount === 0}
+            title="生料先自动转换成标准 Markdown，全部就绪后按序拼接排版;任一份失败会中止并提示"
             onClick={() => void generate()}
           >
-            {state.generating ? '排版中…' : '生成 PDF →'}
+            {state.generating ? '排版中…' : rawCount > 0 ? '转换并生成 PDF →' : '生成 PDF →'}
           </button>
           <span className="hh-action-hint">
             {enabledCount} 份材料参与 · 目标 {state.genConfig.targetPages} 页

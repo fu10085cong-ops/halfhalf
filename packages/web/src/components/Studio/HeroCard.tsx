@@ -1,6 +1,6 @@
 /**
  * 右栏招牌卡「转换 · 排版」——产品特色的门面(类比 NotebookLM 的 Audio Overview 地位)。
- * 一键转换并排版:生料全转(失败份用原文兜底)→ 自动生成 PDF;运行中逐份进度可视化。
+ * 一键转换并排版:生料全转(统一输入闸,任一失败即中止)→ 自动生成 PDF;运行中逐份进度可视化。
  * 目标页数与高级选项(场景/学科/方向/边距/开关)也收在这张卡里——右栏只有一个主入口。
  */
 import type { SceneId } from '../../types';
@@ -28,7 +28,7 @@ const SUBJECT_OPTIONS: { value: string; label: string }[] = [
 
 export default function HeroCard() {
   const { state, dispatch } = useStudio();
-  const { convertAndGenerate } = useStudioActions();
+  const { generate } = useStudioActions();
   const cfg = state.genConfig;
   const set = (patch: Partial<typeof cfg>) => dispatch({ type: 'set_config', patch });
 
@@ -51,11 +51,10 @@ export default function HeroCard() {
         ? '一键转换并排版'
         : '生成 PDF';
 
-  /** 进度行右侧标签:转换阶段看 status/当前份;排版阶段还没转成的 = 原文兜底 */
-  const rowState = (s: (typeof enabled)[number]): { icon: 'done' | 'spin' | 'wait' | 'fallback'; label: string } => {
+  /** 进度行右侧标签。排版阶段不可能再有生料——统一输入闸保证全转完才排 */
+  const rowState = (s: (typeof enabled)[number]): { icon: 'done' | 'spin' | 'wait'; label: string } => {
     if (s.status === 'converted') return { icon: 'done', label: '已转换' };
     if (state.convertingSourceId === s.id) return { icon: 'spin', label: '转换中…' };
-    if (state.generating) return { icon: 'fallback', label: '原文兜底' };
     return { icon: 'wait', label: '待转换' };
   };
 
@@ -85,8 +84,8 @@ export default function HeroCard() {
           type="button"
           className="btn btn-primary"
           disabled={busy || enabled.length === 0}
-          title="生料先转换成标准 Markdown（失败的用原文兜底），随后自动排版"
-          onClick={() => void convertAndGenerate()}
+          title="生料先自动转换成标准 Markdown，全部就绪后排版;任一份失败会中止并提示"
+          onClick={() => void generate()}
         >
           {buttonLabel}
         </button>
@@ -99,11 +98,11 @@ export default function HeroCard() {
               <div key={s.id} className="hh-prog-row">
                 {st.icon === 'done' && <IconCheck size={12} style={{ color: 'var(--color-accent-2-600)' }} />}
                 {st.icon === 'spin' && <span className="hh-spin" />}
-                {(st.icon === 'wait' || st.icon === 'fallback') && (
+                {st.icon === 'wait' && (
                   <span style={{ width: 12, textAlign: 'center', color: 'var(--color-neutral-500)' }}>·</span>
                 )}
                 <span className="hh-prog-title">{s.title}</span>
-                <span className={st.icon === 'fallback' ? 'hh-msg-warn' : 'text-muted'}>{st.label}</span>
+                <span className="text-muted">{st.label}</span>
               </div>
             );
           })}

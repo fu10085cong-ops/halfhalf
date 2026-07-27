@@ -8,6 +8,20 @@ import { IconAlert, IconCheck, IconGear, IconSliders, IconSparkle } from './icon
 import { makeSource, useStudio, type StudioMessage } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
+/** 501(AI 未配置)错误的统一引导:打开右栏「AI 设置」弹窗填 BYOK */
+function GoAiSettings() {
+  const { dispatch } = useStudio();
+  return (
+    <button
+      type="button"
+      className="btn btn-secondary hh-msg-retry"
+      onClick={() => dispatch({ type: 'set_modal', modal: 'settings' })}
+    >
+      去 AI 设置
+    </button>
+  );
+}
+
 function ConvertCard({ msg }: { msg: StudioMessage }) {
   const { state } = useStudio();
   const { convertSingle, stopConvert } = useStudioActions();
@@ -37,7 +51,8 @@ function ConvertCard({ msg }: { msg: StudioMessage }) {
       {msg.error && (
         <div className="hh-msg-err">
           转换出错：{msg.error}
-          {source && (
+          {msg.configError && <GoAiSettings />}
+          {source && !msg.configError && (
             <button
               type="button"
               className="btn btn-secondary hh-msg-retry"
@@ -116,11 +131,11 @@ function PdfCard({ msg }: { msg: StudioMessage }) {
   );
 }
 
-/** 生料引导卡（产品特色的自动引导）：新材料落卡即出——一键转换或跳过 AI。
+/** 生料引导卡（产品特色的自动引导）：新材料落卡即出——转换是排版的必经环节。
  *  状态从当前 source 派生:已转换/已删除时按钮消失,卡片留痕不刷屏 */
 function GuideCard({ msg }: { msg: StudioMessage }) {
   const { state } = useStudio();
-  const { convertSingle, skipAi } = useStudioActions();
+  const { convertSingle } = useStudioActions();
   const source = state.sources.find((s) => s.id === msg.sourceId);
   if (!source) {
     return <span className="text-muted">材料《{msg.sourceTitle}》已删除</span>;
@@ -136,8 +151,8 @@ function GuideCard({ msg }: { msg: StudioMessage }) {
     <>
       <b>检测到生料《{source.title}》</b>
       <div className="text-muted" style={{ marginTop: 2 }}>
-        转换成标准 Markdown 后排版更稳——伪表格、公式、章节结构都会被整理好；这是 HalfHalf
-        的看家环节。右栏「一键转换并排版」可以整批处理。
+        所有材料都要经 AI 转换成标准 Markdown 才能排版——伪表格、公式、章节结构会被统一整理，
+        这是 HalfHalf 的看家环节。直接点「生成 PDF」也会自动先转换。没配 AI key？到「AI 设置」填一个。
       </div>
       <div className="hh-msg-actions">
         <button
@@ -148,14 +163,6 @@ function GuideCard({ msg }: { msg: StudioMessage }) {
         >
           立即转换这份
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          title="不经 AI，原样当成品参与排版（没配 AI key 时的直通路径）"
-          onClick={() => skipAi(source)}
-        >
-          跳过 AI，原样用
-        </button>
       </div>
     </>
   );
@@ -165,7 +172,7 @@ function GuideCard({ msg }: { msg: StudioMessage }) {
  *  (存为新材料;圈定恰好一份时可写回该材料——raw 不动,"从原文重转"是后悔药) */
 function ChatReplyCard({ msg }: { msg: StudioMessage }) {
   const { state, dispatch } = useStudio();
-  const { sendChat } = useStudioActions();
+  const { sendChat, convertSingle, writeBackChat } = useStudioActions();
   const [savedAsSource, setSavedAsSource] = useState(false);
   if (msg.phase === 'error') {
     return (
@@ -207,19 +214,13 @@ function ChatReplyCard({ msg }: { msg: StudioMessage }) {
             type="button"
             className="btn btn-secondary"
             disabled={savedAsSource}
-            title="把这条回复落成左栏一份已转换的材料,可勾选参与排版"
+            title="把这条回复经 AI 标准化后落成左栏材料(统一输入闸:对话产物也要过指定提示词)"
             onClick={() => {
-              dispatch({
-                type: 'add_source',
-                source: makeSource({
-                  kind: 'paste',
-                  raw: msg.text!,
-                  markdown: msg.text!,
-                  status: 'converted',
-                  importSummary: 'AI 对话产物',
-                }),
-              });
+              // 落成生料 + 立即自动过闸转换;转换失败也已入库,左栏亮「生料待转换」
+              const src = makeSource({ kind: 'paste', raw: msg.text!, importSummary: 'AI 对话产物' });
+              dispatch({ type: 'add_source', source: src });
               setSavedAsSource(true);
+              if (!state.converting) void convertSingle(src);
             }}
           >
             {savedAsSource ? '已存入左栏' : '存为新材料'}
@@ -228,18 +229,15 @@ function ChatReplyCard({ msg }: { msg: StudioMessage }) {
             <button
               type="button"
               className="btn btn-secondary"
-              title="用这条回复覆盖该材料的整理稿;原文保留,可随时从原文重新转换"
+              disabled={state.converting}
+              title="回复先经 AI 标准化,再覆盖该材料的整理稿;原文保留,可随时从原文重新转换"
               onClick={() => {
                 if (
                   window.confirm(
-                    `用这条回复覆盖《${writeBackTarget.title}》的内容？原文仍保留，可随时「从原文重新转换」恢复。`
+                    `把这条回复经 AI 标准化后覆盖《${writeBackTarget.title}》的整理稿？原文仍保留，可随时「从原文重新转换」恢复。`
                   )
                 ) {
-                  dispatch({
-                    type: 'update_source',
-                    id: writeBackTarget.id,
-                    patch: { markdown: msg.text!, status: 'converted' },
-                  });
+                  void writeBackChat(writeBackTarget, msg.text!);
                 }
               }}
             >
@@ -274,7 +272,15 @@ export default function MessageCard({ msg }: { msg: StudioMessage }) {
       {msg.kind === 'pdf' && <PdfCard msg={msg} />}
       {msg.kind === 'chat' && <ChatReplyCard msg={msg} />}
       {msg.kind === 'guide' && <GuideCard msg={msg} />}
-      {msg.kind === 'text' && <span>{msg.text}</span>}
+      {msg.kind === 'text' &&
+        (msg.error ? (
+          <span className="hh-msg-err">
+            {msg.error}
+            {msg.configError && <GoAiSettings />}
+          </span>
+        ) : (
+          <span>{msg.text}</span>
+        ))}
     </div>
   );
 }

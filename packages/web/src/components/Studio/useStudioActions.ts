@@ -1,13 +1,19 @@
 /**
- * Studio 的两大主动作：转换生料（⓪ AI 结构化,SSE 逐 source 排队）与生成 PDF（/api/scene）。
- * 动作条、source 编辑视图、右栏生成卡共用；每个动作在对话流里一来一回（用户消息 + 系统卡）。
+ * Studio 的两大主动作：转换（⓪ AI 结构化,SSE 逐 source 排队）与生成 PDF（/api/scene）。
+ * 动作条、source 编辑视图、右栏招牌卡共用；每个动作在对话流里一来一回（用户消息 + 系统卡）。
+ *
+ * 统一输入闸(spec: docs/superpowers/specs/2026-07-28-unified-input-gate-design.md):
+ * 任何文本材料必须经 /api/ai/structurize 的指定提示词转成标准 Markdown 才能排版。
+ * generate 是唯一漏斗——先自动转换所有 enabled 生料,任一失败即中止,绝不 raw 兜底;
+ * 没配 AI 就明确报错引导去「AI 设置」。图片/联网检索产物豁免(落地即标准 Markdown)。
  */
 import { apiFetch } from '../../api';
 import { consumeSse } from '../../lib/sse';
 import type { SceneResult } from '../../types';
 import { byokProvider } from './aiConfig';
 import {
-  combineEnabledMarkdown,
+  combineForChat,
+  combineForLayout,
   newId,
   useStudio,
   type PdfCardData,
@@ -45,16 +51,32 @@ function isAbortError(e: unknown): boolean {
   return e instanceof Error && e.name === 'AbortError';
 }
 
+/** 转换结果:失败时区分「用户停止」与「AI 未配置(501)」——队列要据此决定停不停 */
+type ConvertOutcome =
+  | { ok: true; markdown: string }
+  | { ok: false; aborted: boolean; configError: boolean };
+
 export function useStudioActions() {
   const { state, dispatch } = useStudio();
 
-  /** 转换单个 source：SSE 流式进对话卡，成品写回 source 并返回产物 Markdown。
-   *  失败上卡不抛、返回 null（队列不断;一键流程对失败份用 raw 兜底继续排） */
-  const convertOne = async (source: Source): Promise<string | null> => {
-    dispatch({ type: 'set_converting_source', id: source.id });
+  /** 统一输入闸的内核:把任意文本经指定提示词转成标准 Markdown。
+   *  自带完整叙事(用户消息 + convert 卡 + SSE 流式 + 体检结论),**不写任何 source**——
+   *  写回语义由调用方决定。opts.sourceId 只在转换真实材料时传(卡片重试按钮据此定位;
+   *  写回对话产物时不传,重试走回复卡上的「写回」)。 */
+  const convertText = async (
+    text: string,
+    cardTitle: string,
+    opts: { sourceId?: string; announce?: string } = {}
+  ): Promise<ConvertOutcome> => {
+    if (opts.sourceId) dispatch({ type: 'set_converting_source', id: opts.sourceId });
     dispatch({
       type: 'add_message',
-      message: { id: newId(), role: 'user', kind: 'text', text: `转换《${source.title}》` },
+      message: {
+        id: newId(),
+        role: 'user',
+        kind: 'text',
+        text: opts.announce ?? `转换《${cardTitle}》`,
+      },
     });
     const cardId = newId();
     dispatch({
@@ -64,21 +86,23 @@ export function useStudioActions() {
         role: 'system',
         kind: 'convert',
         phase: 'working',
-        sourceId: source.id,
-        sourceTitle: source.title,
+        sourceId: opts.sourceId,
+        sourceTitle: cardTitle,
         preview: '',
         attempt: 1,
       },
     });
     convertAbort = new AbortController();
+    let configError = false;
     try {
       const resp = await apiFetch('/api/ai/structurize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: source.raw, provider: byokProvider() ?? undefined }),
+        body: JSON.stringify({ content: text, provider: byokProvider() ?? undefined }),
         signal: convertAbort.signal,
       });
       if (!resp.ok || !resp.headers.get('content-type')?.includes('event-stream')) {
+        configError = resp.status === 501; // 服务器没配统一 key 且用户没填 BYOK
         const data = (await resp.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error || `HTTP ${resp.status}`);
       }
@@ -108,11 +132,6 @@ export function useStudioActions() {
           resultMd = md;
           const check = (data.check as unknown as StructurizeCheck) ?? null;
           dispatch({
-            type: 'update_source',
-            id: source.id,
-            patch: { markdown: md, status: 'converted' },
-          });
-          dispatch({
             type: 'update_message',
             id: cardId,
             patch: { phase: 'done', preview: md, check, text: undefined },
@@ -123,22 +142,37 @@ export function useStudioActions() {
       });
       if (streamError) throw new Error(streamError);
       if (resultMd === null) throw new Error('转换中断，未收到最终结果，请重试');
-      return resultMd;
+      return { ok: true, markdown: resultMd };
     } catch (e) {
-      // 手动停止:半截产物不写回(排版吃了残缺 Markdown 比没有更糟),记错误卡
+      // 手动停止:半截产物不外流(排版吃了残缺 Markdown 比没有更糟),记错误卡
+      const aborted = isAbortError(e);
       dispatch({
         type: 'update_message',
         id: cardId,
         patch: {
           phase: 'error',
-          error: isAbortError(e) ? '已手动停止' : e instanceof Error ? e.message : String(e),
+          error: aborted ? '已手动停止' : e instanceof Error ? e.message : String(e),
+          configError,
         },
       });
-      return null;
+      return { ok: false, aborted, configError };
     } finally {
       convertAbort = null;
-      dispatch({ type: 'set_converting_source', id: null });
+      if (opts.sourceId) dispatch({ type: 'set_converting_source', id: null });
     }
+  };
+
+  /** 材料过闸：转换 source.raw,成品写回 markdown 并标 converted。失败上卡不抛。 */
+  const convertOne = async (source: Source): Promise<ConvertOutcome> => {
+    const out = await convertText(source.raw, source.title, { sourceId: source.id });
+    if (out.ok) {
+      dispatch({
+        type: 'update_source',
+        id: source.id,
+        patch: { markdown: out.markdown, status: 'converted' },
+      });
+    }
+    return out;
   };
 
   /** 「转换生料」= 对所有 enabled 且 status=raw 的 source 按序逐个转换（spec 已拍） */
@@ -167,6 +201,7 @@ export function useStudioActions() {
   const convertSingle = async (source: Source): Promise<void> => {
     if (state.converting || !source.raw.trim()) return;
     dispatch({ type: 'set_converting', value: true });
+    convertQueueStopped = false;
     try {
       await convertOne(source);
     } finally {
@@ -174,24 +209,37 @@ export function useStudioActions() {
     }
   };
 
-  /** 逃生门：不经 AI，生料原样当成品（没配 key/AI 挂了时的直通路径） */
-  const skipAi = (source: Source): void => {
-    dispatch({
-      type: 'update_source',
-      id: source.id,
-      patch: { markdown: source.raw, status: 'converted' },
-    });
+  /** 对话回复写回已有材料:回复文本先过闸(structurize),成品覆盖 markdown。
+   *  target.raw 永远不动——「从原文重新转换」的后悔药保持有效。 */
+  const writeBackChat = async (target: Source, replyText: string): Promise<void> => {
+    if (state.converting || !replyText.trim()) return;
+    dispatch({ type: 'set_converting', value: true });
+    convertQueueStopped = false;
+    try {
+      const out = await convertText(replyText, target.title, {
+        announce: `写回《${target.title}》`,
+      });
+      if (out.ok) {
+        dispatch({
+          type: 'update_source',
+          id: target.id,
+          patch: { markdown: out.markdown, status: 'converted' },
+        });
+      }
+    } finally {
+      dispatch({ type: 'set_converting', value: false });
+    }
   };
 
-  /** 生成 PDF：enabled sources 按序拼接 → /api/scene → 结果卡 + 历史/诊断入账。
-   *  sourcesOverride:一键流程刚转换完的最新副本——闭包里的 state.sources 是点击时的
-   *  快照,组合动作里直接用会把已转换的份又当生料排(陈旧闭包坑) */
-  const generate = async (sourcesOverride?: Source[]): Promise<void> => {
-    const sources = sourcesOverride ?? state.sources;
-    const combined = combineEnabledMarkdown(sources);
+  /** 私有:纯排版。进到这里的 enabled 材料必须全部 converted——
+   *  combineForLayout 只吃 converted,是最后一道硬保险。 */
+  const generateCore = async (sources: Source[]): Promise<void> => {
+    const combined = combineForLayout(sources);
     if (!combined.trim() || state.generating) return;
     const cfg = state.genConfig;
-    const enabledCount = sources.filter((s) => s.enabled && (s.markdown || s.raw).trim()).length;
+    const enabledCount = sources.filter(
+      (s) => s.enabled && s.status === 'converted' && s.markdown.trim()
+    ).length;
     dispatch({
       type: 'add_message',
       message: {
@@ -274,6 +322,70 @@ export function useStudioActions() {
     }
   };
 
+  /** 任何入口的「生成 PDF」:统一输入闸的漏斗口。
+   *  先自动转换所有 enabled 生料,任一失败即中止并点名——绝不 raw 兜底;
+   *  转换产物同步进本地副本再排(闭包里的 state.sources 是点击时的快照,陈旧闭包坑)。 */
+  const generate = async (): Promise<void> => {
+    if (state.converting || state.generating) return;
+    const updated = state.sources.map((s) => ({ ...s }));
+    const raws = updated.filter((s) => s.enabled && s.status === 'raw' && s.raw.trim());
+    if (raws.length > 0) {
+      dispatch({ type: 'set_converting', value: true });
+      convertQueueStopped = false;
+      const failed: string[] = [];
+      let configError = false;
+      try {
+        for (const s of raws) {
+          if (convertQueueStopped) break;
+          const out = await convertOne(s);
+          if (out.ok) {
+            s.markdown = out.markdown;
+            s.status = 'converted';
+          } else if (out.aborted) {
+            break;
+          } else {
+            failed.push(s.title);
+            // 没配 AI 时每份都会报同一个错,没必要刷 N 张错误卡
+            if (out.configError) {
+              configError = true;
+              break;
+            }
+          }
+        }
+      } finally {
+        dispatch({ type: 'set_converting', value: false });
+      }
+      if (convertQueueStopped) {
+        dispatch({
+          type: 'add_message',
+          message: {
+            id: newId(),
+            role: 'system',
+            kind: 'text',
+            text: '已手动停止，本次排版取消；已转换的份保留。',
+          },
+        });
+        return;
+      }
+      if (failed.length > 0) {
+        dispatch({
+          type: 'add_message',
+          message: {
+            id: newId(),
+            role: 'system',
+            kind: 'text',
+            error: configError
+              ? `未配置 AI，无法转换材料——排版已中止。到「AI 设置」填一个 key 再试。`
+              : `转换失败，已中止排版：${failed.map((t) => `《${t}》`).join('、')}。修好或取消勾选后再生成。`,
+            configError,
+          },
+        });
+        return;
+      }
+    }
+    await generateCore(updated);
+  };
+
   /** 自由对话（/api/ai/chat SSE）：材料 = 圈定(缺省全部) enabled sources 拼接;
    *  历史 = 之前完成的 chat 轮。scopeIds 随消息存档,供「写回」定位与重试原样重发 */
   const sendChat = async (text: string, scopeIds?: string[]): Promise<void> => {
@@ -313,7 +425,7 @@ export function useStudioActions() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...history, { role: 'user', content }],
-          context: combineEnabledMarkdown(scope),
+          context: combineForChat(scope),
           provider: byokProvider() ?? undefined,
         }),
         signal: chatAbort.signal,
@@ -370,39 +482,11 @@ export function useStudioActions() {
     chatAbort?.abort();
   };
 
-  /** 招牌动作「一键转换并排版」:生料全转（失败份用 raw 兜底）→ 立刻生成 PDF。
-   *  转换产物同步进本地副本再交给 generate——不能依赖闭包里的旧 state（陈旧闭包坑） */
-  const convertAndGenerate = async (): Promise<void> => {
-    if (state.converting || state.generating) return;
-    const updated = state.sources.map((s) => ({ ...s }));
-    const raws = updated.filter((s) => s.enabled && s.status === 'raw' && s.raw.trim());
-    if (raws.length > 0) {
-      dispatch({ type: 'set_converting', value: true });
-      convertQueueStopped = false;
-      try {
-        for (const s of raws) {
-          if (convertQueueStopped) break;
-          const md = await convertOne(s);
-          if (md !== null) {
-            s.markdown = md;
-            s.status = 'converted';
-          }
-        }
-      } finally {
-        dispatch({ type: 'set_converting', value: false });
-      }
-      // 用户按了停止 = 放弃这次一键流程,不拿半套材料去排版
-      if (convertQueueStopped) return;
-    }
-    await generate(updated);
-  };
-
   return {
     convertAllRaw,
     convertSingle,
-    skipAi,
+    writeBackChat,
     generate,
-    convertAndGenerate,
     sendChat,
     stopChat,
     stopConvert,

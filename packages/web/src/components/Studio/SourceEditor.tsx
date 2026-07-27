@@ -1,5 +1,5 @@
 /**
- * 中栏 source 编辑视图（点材料卡进入）：改标题/内容、AI 转换这份、跳过 AI、删除。
+ * 中栏 source 编辑视图（点材料卡进入）：改标题/内容、AI 转换这份、删除。
  * 编辑的是"当前生效文本"——已转换的编辑 markdown（原文 raw 保留可另看），生料编辑 raw。
  */
 import { IconSparkle } from './icons';
@@ -8,7 +8,7 @@ import { useStudioActions } from './useStudioActions';
 
 export default function SourceEditor({ source }: { source: Source }) {
   const { state, dispatch } = useStudio();
-  const { convertSingle, skipAi } = useStudioActions();
+  const { convertSingle } = useStudioActions();
   const editingConverted = source.status === 'converted';
   const text = editingConverted ? source.markdown : source.raw;
 
@@ -70,17 +70,6 @@ export default function SourceEditor({ source }: { source: Source }) {
             <IconSparkle size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
             {editingConverted ? '重新转换（从原文）' : 'AI 转换这份'}
           </button>
-          {!editingConverted && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={!source.raw.trim()}
-              title="不经 AI，原样当成品参与排版（没配 AI key 时的直通路径）"
-              onClick={() => skipAi(source)}
-            >
-              跳过 AI，原样采用
-            </button>
-          )}
           <button
             type="button"
             className="btn btn-secondary"
