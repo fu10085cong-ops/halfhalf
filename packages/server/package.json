@@ -10,7 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json && node -e \"const f=require('node:fs');f.cpSync('src/templates','dist/templates',{recursive:true});f.cpSync('src/workers','dist/workers',{recursive:true})\"",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit -p tsconfig.typecheck.json",
     "clean": "rm -rf dist",
     "test": "tsx --test test/unit/*.test.ts",
     "test:persistence": "tsx test/run-persistence-e2e.ts",

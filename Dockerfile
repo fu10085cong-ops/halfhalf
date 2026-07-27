@@ -24,16 +24,24 @@ RUN pnpm build   # server: tsc + 拷 templates → dist；web: tsc -b && vite bu
 
 # ---- runtime：官方 Playwright 镜像 ----
 FROM mcr.microsoft.com/playwright:v1.61.1-jammy
-# 补中文字体，否则中文 PDF 全是方块（基础镜像只有拉丁字体）
+# 补中文字体，否则中文 PDF 全是方块（基础镜像只有拉丁字体）；
+# python3 给 PDF 原页保真 Worker 用（坏字体页回退成原页图像时才会拉起）。
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      fonts-noto-cjk fonts-noto-color-emoji \
+      fonts-noto-cjk fonts-noto-color-emoji python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/packages/server/src/workers/requirements.txt /tmp/parser-requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/parser-requirements.txt \
+    && rm /tmp/parser-requirements.txt
 
 WORKDIR /app
 ENV NODE_ENV=production \
     HALFHALF_MAX_PAGES=1 \
     HALFHALF_CHROMIUM_NO_SANDBOX=1 \
     HALFHALF_WEB_DIST=/app/web/dist \
+    HALFHALF_PYTHON=/usr/bin/python3 \
+    HALFHALF_IMPORT_CONCURRENCY=1 \
+    HALFHALF_IMPORT_OWNER_LIMIT=3 \
+    HALFHALF_DATA_DIR=/app/data \
     PORT=3000
 
 # 保持 monorepo 布局照搬 node_modules（pnpm 的符号链接依赖 /app 路径一致才解析得开）。

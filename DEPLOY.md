@@ -18,6 +18,8 @@
 | git 历史里的 samples 照片 | ⚠️ 仅当你把仓库 **git clone 到服务器 / 推公开远程** 时需要先洗历史（BFG）；走"本机 build → push 镜像"流程可绕过 |
 | 访问口令 | 公网必设 `HALFHALF_ACCESS_CODE`（API 无鉴权裸奔等于公共渲染农场） |
 | HTTPS | 用户要在页面里填 BYOK key / 粘贴复习材料——明文 HTTP 会被中间人看光，公网必须挂 HTTPS |
+| 任务历史落盘 | ⚠️ 设了 `HALFHALF_DATA_DIR`（compose 默认设了）就会把**用户导入的文档内容**写进卷：任务快照 + 已完成结果（含原页图像）。所有者只记 SHA-256 键，不存客户端 ID/IP，**原始上传文件不落盘**。默认 7 天后连结果文件一起清掉。不想留任何用户内容就删掉这个环境变量和卷 |
+| 匿名客户端 ID | ⚠️ `x-halfhalf-client` 是浏览器自己生成的，服务端照单全收。它只用于任务隔离和配额，**不是登录认证**——拿到别人的 ID 就能读对方的任务结果。别把它当权限边界 |
 
 ## 2. 构建与推送（在开发机做，1G 服务器别本机 build）
 
@@ -76,10 +78,28 @@ docker compose logs -f --tail 100
 # - "browser has been closed"/内存爆:HALFHALF_MAX_PAGES 调回 1,确认 swap 存在
 # - "browser not found":镜像 tag 与 playwright npm 版本不一致(见第 2 节)
 # - 改了代码行为没变:先确认打的是新镜像,再怀疑代码(僵尸容器同理:docker ps 看创建时间)
+# - PDF_VISUAL_RENDER_FAILED:原页保真 Worker 起不来。进容器 `python3 -c "import fitz"`
+#   验证 PyMuPDF 装上了,再看 HALFHALF_PYTHON 是否指对
+# - 429 IMPORT_BUSY:导入并发已满(默认 1)。这是刻意的背压,不是故障;
+#   内存够就调高 HALFHALF_IMPORT_CONCURRENCY
+# - 重启后任务显示 IMPORT_INTERRUPTED:符合预期。本版不自动续跑中断的解析,
+#   请用户重新提交文件(绝不伪造成功)
 ```
 
-## 6. 发布前验收
+## 6. 任务数据的保留与清理
+
+`HALFHALF_DATA_DIR` 下每个任务两个文件：`<jobId>.json`（几百字节的快照）和
+`<jobId>.result.json`（完成结果，含原页图像，可达数 MB）。启动只读快照，
+用户真正打开某个任务时才读结果——历史再多也不会在启动时撑爆内存。
+
+清理是自动的：超过 `HALFHALF_IMPORT_JOB_TTL_MS`（compose 默认 7 天）或超出
+每客户端 `HALFHALF_IMPORT_HISTORY_LIMIT` 条（默认 20）的终态任务，快照和结果一起删。
+
+要立刻清空所有用户内容：`docker compose down && docker volume rm <项目名>_halfhalf-data`。
+
+## 7. 发布前验收
 
 1. `pnpm test` 全绿(开发机);
 2. 带口令 curl `/api/scene` 通、无口令 401、`/api/fixtures` 404;
-3. 按 EXPERIMENT.md 的「十分钟北极星演练」用一份真实无结构材料全流程计时,超时段记进演练日志。
+3. 导入一份真实 PDF,`docker compose restart` 后仍能在最近任务里打开并恢复内容;
+4. 按 EXPERIMENT.md 的「十分钟北极星演练」用一份真实无结构材料全流程计时,超时段记进演练日志。
