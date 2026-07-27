@@ -90,11 +90,27 @@ Date: 2026-07-27
 | `SearchProvider`（接口） | `search(query, limit) → SearchHit[]` | 无 |
 | `ZhipuSearchProvider` | 智谱 `web_search`，**本期主实现** | 现有 `ai-provider` 的白名单与 BYOK |
 | `BraveSearchProvider` | 备选适配器，**本期只留接口不实现** | 无 |
-| `source-quality.ts` | 黑名单、同源去重、域名加权 | 纯函数 |
+| `source-quality.ts` | 同源去重、域名加权、黑名单匹配 | 纯函数 |
+| `blocklist.ts` | 从文件读黑名单，mtime 变化即热更 | `node:fs` |
 | `research-pipeline.ts` | 串联搜索→筛→总结，产出 `ImportedDocument` | 上述 + `ai-structurize` |
 | `routes/research.ts` | `POST /api/research/jobs` | pipeline + `import-job-store` |
 
-`source-quality.ts` 是唯一需要密集单测的地方，且全是纯函数。
+`source-quality.ts` 是唯一需要密集单测的地方，且全是纯函数——它只接收一个域名数组作为黑名单，不自己读文件，这样测试不碰磁盘。
+
+### 黑名单的增删改查：一个文本文件
+
+**运维数据，不进前端。** 现在的访问口令是所有用户共享的、不区分身份，把黑名单做成 HTTP 接口等于让任何用户都能改它。做成文件则天然只有能碰服务器/数据卷的人能改。
+
+- **位置**：`${HALFHALF_DATA_DIR}/blocklist.txt`
+- **格式**：一行一个域名，`#` 开头为注释，空行忽略
+- **匹配**：后缀匹配。写 `sogou.com` 同时挡掉 `wenwen.sogou.com`；写完整域名则只挡那一个
+- **增删改查**：直接编辑这个文件。`docker compose exec` 进容器改，或在宿主上改挂载卷里的文件
+- **热更**：每次检索前比对 mtime，变了才重读。**不需要重启服务**
+- **首次启动自动播种**：文件不存在时，把内置默认清单（第 8 节）写进去。之后文件即唯一事实来源，代码里的默认值不再参与合并——避免「我删了一行但它还在挡」这种意外
+- **未设 `HALFHALF_DATA_DIR` 时**：用内置默认清单，不落文件（保持开发环境零配置）
+- **坏行处理**：跳过并在日志里报一行，绝不因为一行写错就让检索挂掉
+
+域名加权表仍留在代码里——它是排序算法的一部分，不是运维旋钮。
 
 ### 复用 import-job 队列
 
@@ -176,23 +192,39 @@ Date: 2026-07-27
 
 ### 黑名单初始清单
 
-依据实测样本，先硬编码这些（后续按真实使用迭代）：
+依据实测样本。这份清单只是**首次启动时写进 `blocklist.txt` 的种子**，之后以文件为准（管理方式见第 4 节）：
 
 ```
-wenwen.sogou.com    zhidao.baidu.com    baijiahao.baidu.com
-max.book118.com     m.renrendoc.com     wk.baidu.com        doc.wendoc.com
+# 问答/内容农场
+wenwen.sogou.com
+zhidao.baidu.com
+baijiahao.baidu.com
+
+# 付费墙或登录墙的文库站——抓不到也读不全
+max.book118.com
+m.renrendoc.com
+wk.baidu.com
+doc.wendoc.com
 ```
 
 保留知乎专栏、专业社区（elecfans 等）与个人博客——中文复习资料的好内容大量在这些地方。
 
+这份清单必然不全。第一次真实使用后按 `bench:research` 的输出补，是预期中的运维动作，不是设计缺陷。
+
 ## 9. 测试
 
 **单元（纯函数，无网络）**
-- 黑名单命中与放行
+- 黑名单命中与放行，含**后缀匹配**：`sogou.com` 挡掉 `wenwen.sogou.com`，但不挡 `notsogou.com`
 - 同源去重：同一站的多条只保留权重最高的一条
 - 域名加权排序
 - 分节 Markdown 组装：每节都带 URL
 - **回归锁**：搜索返回 0 条时，断言未调用总结模型（防静默退化，对应第 2 节红线）
+
+**blocklist 文件（临时目录，不碰真实数据卷）**
+- 文件不存在 → 播种默认清单并生效
+- 改文件 → 下次检索即生效，无需重启（mtime 热更）
+- 含注释、空行、前后空格的文件能正确解析
+- 单行写坏 → 跳过该行，其余照常生效，不抛异常
 
 **集成（打桩 SearchProvider）**
 - 4 源正常 → 一份四节文档
@@ -206,7 +238,8 @@ max.book118.com     m.renrendoc.com     wk.baidu.com        doc.wendoc.com
 
 - 抓原页（`importUrl` 已就绪，需要深度时作为单源动作增量接入）
 - `BraveSearchProvider` 的实际实现
-- 黑白名单的用户自定义 UI（先硬编码，观察真实使用后再决定是否暴露）
+- 黑名单的前端 UI 与 HTTP 管理接口（改文件即可；共享口令下没有身份区分，不该让用户改运维数据）
+- 白名单（实测证明索引里没有学术源，白名单会直接把结果清零）
 - 图片
 - 跨轮次检索历史与增量补搜
 - 自动判断「该联网了」——永远由用户主动触发
