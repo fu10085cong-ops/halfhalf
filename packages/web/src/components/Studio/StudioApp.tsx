@@ -1,11 +1,11 @@
 /**
  * Studio 三栏前端（NotebookLM 骨架）：左 Sources / 中 操作流对话 / 右 功能模块。
  * spec: docs/superpowers/specs/2026-07-27-studio-ui-design.md。
- * `?ui=studio` 进入,与旧界面并存;后端零改动。
+ * 应用唯一界面(旧版已退役);后端零改动。
  * 整个应用包在 DocumentDropSurface 里——拖文件到页面任意位置落成新材料卡。
  */
 import { useEffect, useRef } from 'react';
-import DocumentDropSurface from '../Scene/DocumentDropSurface';
+import DocumentDropSurface from './DocumentDropSurface';
 import { IconLogo } from './icons';
 import ChatStream from './ChatStream';
 import PdfOverlay from './PdfOverlay';
@@ -98,9 +98,6 @@ function StudioShell() {
             </span>
             <h1>HalfHalf</h1>
             <span className="studio-tagline">半开卷小抄工作台 —— 从材料到可打印 PDF</span>
-            <a className="studio-back" href={window.location.pathname}>
-              返回旧版 ↩
-            </a>
           </header>
           <div className="studio-body">
             <SourcesRail uploadPanel={uploadPanel} />

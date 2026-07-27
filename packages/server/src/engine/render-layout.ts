@@ -77,7 +77,7 @@ export interface LayoutRenderOptions extends RectRenderOptions {
   columnGapMm: number;
 }
 
-/** 与 render-pdf.ts 相同的宽高对调逻辑 */
+/** 横版 = 宽高对调（页面尺寸表按竖版记录） */
 function paperDims(paperSize: PaperSize, orientation: ResolvedOrientation) {
   const p = PAPER_SIZES[paperSize];
   return orientation === 'landscape' ? { width: p.height, height: p.width } : p;

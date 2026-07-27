@@ -7,24 +7,8 @@
  * 也吃不到取消和「刷新页面后恢复」。同步端点仍在，但只留给外部脚本。
  */
 import { apiFetch } from '../api';
-
-export interface DocumentQualityPage {
-  page: number;
-  characterCount: number;
-  suspiciousCharacterCount: number;
-  suspiciousRatio: number;
-  blockCount: number;
-  route: 'native' | 'hybrid' | 'ocr';
-}
-
-export interface DocumentQualityReport {
-  suspiciousCharacterCount: number;
-  suspiciousRatio: number;
-  nativePageCount: number;
-  hybridPageCount: number;
-  ocrPageCount: number;
-  pages: DocumentQualityPage[];
-}
+// 质量报告的形状与 KnowledgeIR 共用一份定义,别再抄一遍(此前重复定义过两份)
+import type { DocumentQualityReport } from '../types/restructure';
 
 /** 联网检索采纳的来源，供前端展示与用户回查。 */
 export interface ResearchSource {

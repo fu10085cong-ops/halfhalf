@@ -104,13 +104,6 @@ export const IconCheck = ({ size = 14, style }: { size?: number; style?: CSSProp
   </Svg>
 );
 
-/** 添加 */
-export const IconPlus = ({ size = 16, style }: { size?: number; style?: CSSProperties }) => (
-  <Svg size={size} style={style}>
-    <path d="M12 5v14M5 12h14" />
-  </Svg>
-);
-
 /** 对话气泡(中栏空态) */
 export const IconChat = ({ size = 17, style }: { size?: number; style?: CSSProperties }) => (
   <Svg size={size} style={style}>

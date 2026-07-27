@@ -50,3 +50,5 @@ fonts/*.woff2
 
 # 本地教学手册（只归本机，不进版本库）
 docs/tutor/
+# TypeScript 增量构建产物
+*.tsbuildinfo

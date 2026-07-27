@@ -65,9 +65,7 @@ pnpm dev
 - 前端:http://localhost:5173
 - 后端 API:http://localhost:3000
 
-前端默认进「场景排版」页(`ScenePanel`,全功能单页)。
-访问 `http://localhost:5173/?ui=studio` 可以看在建的 Studio 三栏界面——**尚未成熟,默认不走它**,
-成熟后会切成默认入口。
+前端唯一界面是 Studio 三栏工作台(左 材料 / 中 对话 / 右 功能模块)。
 
 ### 导入材料
 
@@ -196,8 +194,7 @@ halfhalf/
 │   │   └── test/                     # 判例 fixtures + 实验脚本 + unit 回归锁
 │   └── web/
 │       └── src/components/
-│           ├── Scene/                # ScenePanel(默认入口)+ ChatIntake + 拖放
-│           └── Studio/               # 三栏新界面(?ui=studio,在建)
+│           └── Studio/               # 三栏工作台(唯一界面)
 ├── Dockerfile / docker-compose.yml / .env.example
 └── DESIGN.md / RULES.md / EXPERIMENT.md / PRODUCT.md / CHANGELOG.md / DEPLOY.md
 ```
@@ -282,7 +279,7 @@ function findOptimalFontSize(markdown, targetPages):
       (表现为"首页全白 + 大字 + 内容裁切"),需要按段落切块兜底——也是 AI 入口不可用时的降级
 - [ ] **空白利用率**:已知 gutter 与拼装缝隙仍有可回收余量,先固化跨判例基线再动引擎
       (纪律见 EXPERIMENT.md,结论落 RULES.md 缺陷台账)
-- [ ] **Studio 界面收敛**:三栏界面成熟后切成默认入口,替代 ScenePanel
+- [x] **Studio 界面收敛**:2026-07-28 Studio 转正为唯一界面,旧 ScenePanel 退役删除
 
 ### 后续版本
 
