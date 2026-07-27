@@ -11,6 +11,13 @@ services:
     environment:
       HALFHALF_MAX_PAGES: "1"
       HALFHALF_CHROMIUM_NO_SANDBOX: "1"
+      HALFHALF_PYTHON: "/usr/bin/python3"
+      # 1G 机器上导入并发保持 1：一次 PDF 保真会同时吃 Chromium 和 PyMuPDF
+      HALFHALF_IMPORT_CONCURRENCY: "1"
+      HALFHALF_IMPORT_OWNER_LIMIT: "3"
+      HALFHALF_IMPORT_HISTORY_LIMIT: "20"
+      HALFHALF_IMPORT_JOB_TTL_MS: "604800000"   # 7 天后清掉终态任务及其结果文件
+      HALFHALF_DATA_DIR: "/app/data"
       # 口令与 AI key 这类秘密放 .env（同目录，git 忽略；模板见 .env.example）
       HALFHALF_ACCESS_CODE: "${HALFHALF_ACCESS_CODE:-}"
       HALFHALF_AI_ENDPOINT: "${HALFHALF_AI_ENDPOINT:-}"
@@ -18,4 +25,10 @@ services:
       HALFHALF_AI_KEY: "${HALFHALF_AI_KEY:-}"
     mem_limit: 900m             # 给系统留余量，别让容器吃满 1G
     memswap_limit: 2g           # 允许用到 swap，吸收单次渲染的内存尖峰（务必先在宿主建 swap）
+    volumes:
+      # 任务历史与已完成结果；不挂这个卷则容器重建后历史清零（功能仍正常）
+      - halfhalf-data:/app/data
     restart: unless-stopped
+
+volumes:
+  halfhalf-data:

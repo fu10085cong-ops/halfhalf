@@ -92,6 +92,7 @@ function isActive(job: ImportJob): boolean {
 }
 
 function snapshot(job: ImportJob, includeResult = true): ImportJobSnapshot {
+  const result = includeResult ? resultFor(job) : undefined;
   return {
     jobId: job.id,
     status: job.status,
@@ -102,7 +103,7 @@ function snapshot(job: ImportJob, includeResult = true): ImportJobSnapshot {
     message: job.message,
     createdAt: new Date(job.createdAt).toISOString(),
     updatedAt: new Date(job.updatedAt).toISOString(),
-    ...(includeResult && job.status === 'completed' && job.result ? { result: job.result } : {}),
+    ...(result ? { result } : {}),
     ...(job.error ? { error: job.error } : {}),
   };
 }
@@ -120,20 +121,36 @@ function persistedSnapshot(job: ImportJob): PersistedImportJob {
     sizeBytes: job.sizeBytes,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    ...(job.status === 'completed' && job.result ? { result: job.result } : {}),
     ...(job.error ? { error: job.error } : {}),
   };
 }
 
+/**
+ * 快照每次进度都写，结果只在完成时写一次。
+ * 结果确实落了盘才从内存里丢掉——历史任务的页面图不该常驻，用户真正打开
+ * 某个任务时再读回来（见 resultFor）。纯内存仓储没有盘可读，必须留着；
+ * saveResult 抛错（例如超过单任务上限）时也会跳过丢弃，结果继续由内存兜住。
+ */
 function persist(job: ImportJob): void {
   try {
     repository.save(persistedSnapshot(job));
+    if (job.status === 'completed' && job.result) {
+      repository.saveResult(job.id, job.result);
+      if (repository.durable) job.result = undefined;
+    }
   } catch (error) {
     console.error(
       `[halfhalf] import job ${job.id} persistence failed:`,
       error instanceof Error ? error.message : error
     );
   }
+}
+
+/** 内存里没有就按需读盘；不回填到 job 上，避免历史结果又常驻内存。 */
+function resultFor(job: ImportJob): ImportedDocument | undefined {
+  if (job.result) return job.result;
+  if (job.status !== 'completed') return undefined;
+  return repository.loadResult(job.id);
 }
 
 function cleanupExpiredJobs(): void {
@@ -370,7 +387,7 @@ function hydratePersistedJobs(): void {
       createdAt: recovered.createdAt,
       updatedAt: recovered.updatedAt,
       controller: new AbortController(),
-      ...(recovered.result ? { result: recovered.result } : {}),
+      // 结果不在这里加载：快照恢复只建索引，用户打开某个任务时才读盘
       ...(recovered.error ? { error: recovered.error } : {}),
     };
     jobs.set(job.id, job);

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +9,7 @@ import {
   recoverPersistedImportJob,
   type PersistedImportJob,
 } from '../../src/engine/import-job-repository.js';
+import type { ImportedDocument } from '../../src/types/index.js';
 
 function sampleJob(overrides: Partial<PersistedImportJob> = {}): PersistedImportJob {
   return {
@@ -34,33 +35,83 @@ test('memory repository keeps the Phase 3 zero-configuration behavior', () => {
   assert.deepEqual(repository.load(), []);
 });
 
+function sampleResult(markdown: string): ImportedDocument {
+  return {
+    markdown,
+    summary: {
+      kind: 'pdf',
+      originalName: '一般资料.pdf',
+      sizeBytes: 1234,
+      characterCount: 6,
+      paragraphCount: 1,
+      headingCount: 1,
+      tableCount: 0,
+      imageCount: 0,
+      warnings: [],
+    },
+  };
+}
+
 test('file repository atomically persists, reloads, and deletes job snapshots', (t) => {
   const root = mkdtempSync(path.join(tmpdir(), 'halfhalf-job-repository-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
   const repository = new FileImportJobRepository(root);
-  const job = sampleJob({
-    result: {
-      markdown: '# 可恢复结果',
-      summary: {
-        kind: 'pdf',
-        originalName: '一般资料.pdf',
-        sizeBytes: 1234,
-        characterCount: 6,
-        paragraphCount: 1,
-        headingCount: 1,
-        tableCount: 0,
-        imageCount: 0,
-        warnings: [],
-      },
-    },
-  });
+  const job = sampleJob();
 
   repository.save(job);
   assert.deepEqual(new FileImportJobRepository(root).load(), [job]);
 
   repository.delete(job.jobId);
   assert.deepEqual(repository.load(), []);
+});
+
+test('results live outside the snapshot so startup never reads page images', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'halfhalf-job-repository-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const repository = new FileImportJobRepository(root);
+  const job = sampleJob();
+  repository.save(job);
+  repository.saveResult(job.jobId, sampleResult('# 可恢复结果'));
+
+  // 启动路径只吃快照：既不返回结果，也不把 .result.json 当成第二个任务
+  const reloaded = new FileImportJobRepository(root).load();
+  assert.equal(reloaded.length, 1);
+  assert.deepEqual(reloaded, [job]);
+  assert.equal('result' in reloaded[0], false);
+
+  // 打开某个任务时才按需读回来
+  assert.equal(repository.loadResult(job.jobId)?.markdown, '# 可恢复结果');
+});
+
+test('deleting a job removes its result payload too', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'halfhalf-job-repository-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const repository = new FileImportJobRepository(root);
+  const job = sampleJob();
+  repository.save(job);
+  repository.saveResult(job.jobId, sampleResult('# 待清理'));
+
+  repository.delete(job.jobId);
+  assert.deepEqual(repository.load(), []);
+  assert.equal(repository.loadResult(job.jobId), undefined);
+  assert.deepEqual(readdirSync(repository.directory), []);
+});
+
+test('a missing or damaged result reads as absent instead of throwing', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'halfhalf-job-repository-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const repository = new FileImportJobRepository(root);
+  const job = sampleJob();
+  repository.save(job);
+
+  assert.equal(repository.loadResult(job.jobId), undefined);
+
+  writeFileSync(path.join(repository.directory, `${job.jobId}.result.json`), '{broken', 'utf8');
+  assert.equal(repository.loadResult(job.jobId), undefined);
 });
 
 test('one damaged snapshot does not prevent valid job history from loading', (t) => {

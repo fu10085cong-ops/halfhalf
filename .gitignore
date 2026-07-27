@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+.venv-parser/
+
+# 本地跑持久化时的任务历史与结果（HALFHALF_DATA_DIR）
+data/
 
 # Build output
 dist/

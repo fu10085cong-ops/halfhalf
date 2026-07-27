@@ -25,6 +25,10 @@ export type PersistedImportJobStage =
   | 'finalizing'
   | 'completed';
 
+/**
+ * 任务快照刻意不含 result：完成结果里嵌着整页 base64 图，动辄几 MB。
+ * 快照小才能在启动时全部读进内存，结果按需单独取（见 loadResult）。
+ */
 export interface PersistedImportJob {
   schemaVersion: 1;
   jobId: string;
@@ -37,7 +41,6 @@ export interface PersistedImportJob {
   sizeBytes: number;
   createdAt: number;
   updatedAt: number;
-  result?: ImportedDocument;
   error?: { code: string; message: string; details?: Record<string, unknown> };
 }
 
@@ -45,6 +48,9 @@ export interface ImportJobRepository {
   readonly durable: boolean;
   load(): PersistedImportJob[];
   save(job: PersistedImportJob): void;
+  /** 完成结果单独落盘，不进快照——避免启动时把所有页面图读进内存。 */
+  saveResult(jobId: string, result: ImportedDocument): void;
+  loadResult(jobId: string): ImportedDocument | undefined;
   delete(jobId: string): void;
 }
 
@@ -69,11 +75,24 @@ export class MemoryImportJobRepository implements ImportJobRepository {
     return [];
   }
   save(_job: PersistedImportJob): void {}
+  saveResult(_jobId: string, _result: ImportedDocument): void {}
+  loadResult(_jobId: string): ImportedDocument | undefined {
+    return undefined;
+  }
   delete(_jobId: string): void {}
 }
 
-const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
+/** 快照不含结果，正常只有几百字节；给一个宽松上限挡住被写坏的文件。 */
+const MAX_SNAPSHOT_BYTES = 1024 * 1024;
+/** 结果含整页 base64 图，单个任务的天花板。 */
+const MAX_RESULT_BYTES = 64 * 1024 * 1024;
 const SAFE_JOB_ID = /^[a-f0-9-]{16,64}$/i;
+
+function isImportedDocument(value: unknown): value is ImportedDocument {
+  if (!value || typeof value !== 'object') return false;
+  const document = value as Partial<ImportedDocument>;
+  return typeof document.markdown === 'string' && Boolean(document.summary);
+}
 
 function isPersistedImportJob(value: unknown): value is PersistedImportJob {
   if (!value || typeof value !== 'object') return false;
@@ -103,10 +122,27 @@ export class FileImportJobRepository implements ImportJobRepository {
     mkdirSync(this.directory, { recursive: true });
   }
 
+  private snapshotPath(jobId: string): string {
+    return path.join(this.directory, `${jobId}.json`);
+  }
+
+  private resultPath(jobId: string): string {
+    return path.join(this.directory, `${jobId}.result.json`);
+  }
+
+  /** 原子写：先写唯一临时文件再 rename，半截文件不会被后续读到。 */
+  private writeAtomically(target: string, payload: string): void {
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    writeFileSync(temporary, payload, { encoding: 'utf8', flag: 'wx' });
+    renameSync(temporary, target);
+  }
+
   load(): PersistedImportJob[] {
     const jobs: PersistedImportJob[] = [];
     for (const entry of readdirSync(this.directory, { withFileTypes: true })) {
+      // .result.json 是结果载荷，按需单独读，不在启动时扫进内存
       if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      if (entry.name.endsWith('.result.json')) continue;
       const absolutePath = path.join(this.directory, entry.name);
       try {
         if (statSync(absolutePath).size > MAX_SNAPSHOT_BYTES) continue;
@@ -121,15 +157,35 @@ export class FileImportJobRepository implements ImportJobRepository {
 
   save(job: PersistedImportJob): void {
     if (!SAFE_JOB_ID.test(job.jobId)) throw new Error('Invalid import job id.');
-    const target = path.join(this.directory, `${job.jobId}.json`);
-    const temporary = `${target}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, JSON.stringify(job), { encoding: 'utf8', flag: 'wx' });
-    renameSync(temporary, target);
+    this.writeAtomically(this.snapshotPath(job.jobId), JSON.stringify(job));
+  }
+
+  saveResult(jobId: string, result: ImportedDocument): void {
+    if (!SAFE_JOB_ID.test(jobId)) throw new Error('Invalid import job id.');
+    const payload = JSON.stringify(result);
+    // 写得进去却读不回来最糟：超限直接不写，让任务退化成「有记录、无结果」
+    if (Buffer.byteLength(payload, 'utf8') > MAX_RESULT_BYTES) {
+      throw new Error(`Import result exceeds ${MAX_RESULT_BYTES} bytes and was not persisted.`);
+    }
+    this.writeAtomically(this.resultPath(jobId), payload);
+  }
+
+  loadResult(jobId: string): ImportedDocument | undefined {
+    if (!SAFE_JOB_ID.test(jobId)) return undefined;
+    const absolutePath = this.resultPath(jobId);
+    try {
+      if (statSync(absolutePath).size > MAX_RESULT_BYTES) return undefined;
+      const parsed: unknown = JSON.parse(readFileSync(absolutePath, 'utf8'));
+      return isImportedDocument(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   delete(jobId: string): void {
     if (!SAFE_JOB_ID.test(jobId)) return;
-    rmSync(path.join(this.directory, `${jobId}.json`), { force: true });
+    rmSync(this.snapshotPath(jobId), { force: true });
+    rmSync(this.resultPath(jobId), { force: true });
   }
 }
 
