@@ -6,7 +6,7 @@
  * delta{text,attempt} / retry{problems} / result{markdown,check,attempts} / error{error}。
  * attempt 变化 = 首轮体检不过、AI 在重写——预览缓冲要清空重新累积。
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api';
 import type { AiProviderConfig } from '../../types';
 
@@ -21,6 +21,9 @@ interface Props {
   provider: AiProviderConfig | null;
   /** generate=true 表示「采用并排版」：写入文本框后立刻触发生成 */
   onAdopt: (markdown: string, generate: boolean) => void;
+  /** 文档导入（Word/PDF 提取产物）注入原料框：seq 变化触发追加。生料该走 AI 转换,
+   *  不该直接进排版框——真实判例:用户把 docx 拖进本区却只得到一行文件名 */
+  injected?: { text: string; seq: number } | null;
 }
 
 /** 解析 text/event-stream 帧（event: X / data: JSON），逐帧回调 */
@@ -55,7 +58,7 @@ async function consumeSse(
   }
 }
 
-export default function ChatIntake({ provider, onAdopt }: Props) {
+export default function ChatIntake({ provider, onAdopt, injected }: Props) {
   const [raw, setRaw] = useState('');
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState('');
@@ -63,6 +66,20 @@ export default function ChatIntake({ provider, onAdopt }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [check, setCheck] = useState<StructurizeCheck | null>(null);
   const [finalMd, setFinalMd] = useState<string | null>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  // 文档导入注入：追加进原料框（多文件可累加），自动展开本区并清掉上一轮转换的残留
+  useEffect(() => {
+    if (!injected) return;
+    setRaw((cur) => (cur.trim() ? `${cur.trim()}\n\n${injected.text}` : injected.text));
+    setPreview('');
+    setCheck(null);
+    setFinalMd(null);
+    setError(null);
+    setStatus('📄 文档内容已提取——点「转换为标准 Markdown」整理，或「跳过 AI」原样进排版框');
+    if (detailsRef.current) detailsRef.current.open = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [injected?.seq]);
 
   const convert = async () => {
     if (!raw.trim() || busy) return;
@@ -122,6 +139,7 @@ export default function ChatIntake({ provider, onAdopt }: Props) {
   return (
     <details
       open
+      ref={detailsRef}
       style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: 8, fontSize: 13 }}
     >
       <summary style={{ cursor: 'pointer' }}>
@@ -134,9 +152,14 @@ export default function ChatIntake({ provider, onAdopt }: Props) {
       <textarea
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
+        onDrop={(e) => {
+          // 拖文件进来时掐掉浏览器默认的"插入文件名"（真实判例:docx 拖进来只剩一行
+          // 文件名喂给 AI）；不拦传播,外层 DocumentDropSurface 照常接住文件做导入
+          if (e.dataTransfer?.files?.length) e.preventDefault();
+        }}
         rows={5}
         spellCheck={false}
-        placeholder="把原始材料粘到这里（可多次粘贴拼接）——不需要是 Markdown"
+        placeholder="把原始材料粘到这里（可多次粘贴拼接）——不需要是 Markdown；Word/PDF 直接拖进页面"
         style={{
           width: '100%',
           boxSizing: 'border-box',
@@ -150,6 +173,13 @@ export default function ChatIntake({ provider, onAdopt }: Props) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
         <button onClick={convert} disabled={busy || !raw.trim()} style={{ fontWeight: 'bold' }}>
           {busy ? '转换中…' : '转换为标准 Markdown'}
+        </button>
+        <button
+          onClick={() => onAdopt(raw, false)}
+          disabled={busy || !raw.trim()}
+          title="不经 AI，把原料原样写入下方排版文本框（没配 AI key 时的直通路径）"
+        >
+          跳过 AI，原样写入
         </button>
         {provider === null && (
           <span style={{ color: '#94a3b8' }}>

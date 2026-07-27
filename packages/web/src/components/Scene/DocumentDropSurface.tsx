@@ -171,8 +171,8 @@ export default function DocumentDropSurface({
       <div className="hh-drop-guide">
         <span className="hh-drop-icon" aria-hidden="true">＋</span>
         <span>
-          <b>把 Word、PDF 或图片拖到左侧任意位置</b>
-          <small>自动提取为可编辑内容，再接着精简和排版；文件仅在本机服务内存中处理</small>
+          <b>把 Word、PDF 或图片拖到页面任意位置</b>
+          <small>文档提取后进入上方「材料转换」，AI 整理成标准 Markdown 再排版；图片直接插入。文件仅在本机服务内存中处理</small>
         </span>
         <button type="button" onClick={() => inputRef.current?.click()}>
           选择文件

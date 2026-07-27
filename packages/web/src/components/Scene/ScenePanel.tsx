@@ -208,24 +208,12 @@ export default function ScenePanel() {
     if (file) await insertImageFile(file);
   };
 
-  /** 文档导入（拖拽/选择 Word·PDF → /api/import/document 转出的 Markdown）：
-   *  追加到现有内容之后（--- 分隔）；文本框还是默认样例或空白则直接替换。 */
+  /** 文档导入（拖拽/选择 Word·PDF → /api/import/document 提取的 Markdown）：
+   *  注入「材料转换」原料框走 ⓪ AI 结构化——Word/Pandoc 生料（伪表格、无结构）直接
+   *  进排版框会塌；真实判例：用户把 docx 拖进转换框只得到一行文件名。seq 触发注入。 */
+  const [injectedDoc, setInjectedDoc] = useState<{ text: string; seq: number } | null>(null);
   const insertImportedMarkdown = (incoming: string) => {
-    setMarkdown((current) =>
-      current === DEFAULT_MD || !current.trim()
-        ? incoming
-        : `${current.trim()}\n\n---\n\n${incoming}`
-    );
-    setResult(null);
-    setError(null);
-    setSuggestions([]);
-    setAccepted({});
-    setAiSummary(null);
-    setCompressSource('');
-    if (pdfUrl) {
-      URL.revokeObjectURL(pdfUrl);
-      setPdfUrl(null);
-    }
+    setInjectedDoc((prev) => ({ text: incoming, seq: (prev?.seq ?? 0) + 1 }));
   };
 
   /** mdOverride：ChatIntake「采用并排版」时刚 setMarkdown 的值还没进本闭包，直接传参绕过 */
@@ -376,6 +364,7 @@ export default function ScenePanel() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
         {/* ⓪ 材料转换：应急路径第一棒。BYOK key 填了就带上（花用户自己的钱），否则走服务器统一 key */}
         <ChatIntake
+          injected={injectedDoc}
           provider={
             aiKey.trim()
               ? { endpoint: aiEndpoint, model: aiModel, headers: { Authorization: `Bearer ${aiKey}` } }
@@ -685,6 +674,10 @@ export default function ScenePanel() {
           value={markdown}
           onChange={(e) => setMarkdown(e.target.value)}
           onPaste={handlePaste}
+          onDrop={(e) => {
+            // 掐掉浏览器默认的"拖文件插入文件名"；外层 DropSurface 照常接文件做导入
+            if (e.dataTransfer?.files?.length) e.preventDefault();
+          }}
           spellCheck={false}
           placeholder="粘贴 Markdown；截图可直接 Ctrl/Cmd+V"
           style={{
