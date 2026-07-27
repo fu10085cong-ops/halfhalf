@@ -91,6 +91,15 @@ export interface AiStructurizeRequest {
   provider?: AiProviderConfig;
 }
 
+/** POST /api/ai/chat（SSE）的请求体形状——多轮材料对话，服务端无状态 */
+export interface AiChatRequest {
+  /** 对话历史（含本轮用户消息，末条必须是 user）；服务端只保留最近若干条 */
+  messages: { role: 'user' | 'assistant'; content: string }[];
+  /** 参与对话的材料全文（客户端每次全量带上；可为空 = 无材料闲聊会被 prompt 挡回） */
+  context?: string;
+  provider?: AiProviderConfig;
+}
+
 /** POST /api/ai/compress 的请求体形状 */
 export interface AiCompressRequest {
   /** 待精简的完整 Markdown（图片以 data: URI 内嵌，同 /api/scene） */
@@ -148,11 +157,12 @@ export interface AiCompressResponse {
   summary: AiCompressSummary;
 }
 
-/** POST /api/import/document 的导入结果。 */
-export type ImportedDocumentKind = 'docx' | 'pdf';
+/** POST /api/import/document、/api/import/url 的导入结果。 */
+export type ImportedDocumentKind = 'docx' | 'pdf' | 'url';
 
 export interface DocumentImportSummary {
   kind: ImportedDocumentKind;
+  /** 文件名；URL 导入时为网页标题（取不到则为域名） */
   originalName: string;
   sizeBytes: number;
   characterCount: number;
@@ -162,6 +172,8 @@ export interface DocumentImportSummary {
   imageCount: number;
   pageCount?: number;
   textPageCount?: number;
+  /** URL 导入时的最终地址（跟随重定向后） */
+  sourceUrl?: string;
   warnings: string[];
 }
 
