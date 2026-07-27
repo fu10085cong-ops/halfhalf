@@ -7,21 +7,29 @@ import { apiFetch } from '../../api';
 import type { FixtureInfo } from '../../types';
 import GenerateCard from './GenerateCard';
 import Modal from './Modal';
+import { IconChevron, IconGear, IconGrid, IconHistory, IconSparkle } from './icons';
 import { AiSettingsPanel, CompressPanel, DiagnosticsPanel, HistoryPanel } from './panels';
 import { makeSource, useStudio, type StudioModal } from './useStudioStore';
 
-const TILES: { modal: Exclude<StudioModal, null>; icon: string; title: string; hint: string }[] = [
-  { modal: 'compress', icon: '✨', title: 'AI 精简', hint: '叙述改要点,逐块勾选' },
-  { modal: 'diagnostics', icon: '🔍', title: '诊断报告', hint: '最近一次生成的细节' },
-  { modal: 'history', icon: '🕘', title: '会话历史', hint: '改参对照,每次一行' },
-  { modal: 'settings', icon: '⚙️', title: 'AI 设置', hint: '服务商 / 模型 / Key' },
+/** 瓦片语言逐字取自设计稿:线稿图标在上、粗体标题 + 40% 透明 chevron 在下,
+ *  neutral/沙绿底交替,无说明文字、无 emoji(logo 设计语言) */
+const TILES: {
+  modal: Exclude<StudioModal, null>;
+  icon: typeof IconSparkle;
+  title: string;
+  hint: string;
+}[] = [
+  { modal: 'compress', icon: IconSparkle, title: 'AI 精简', hint: '叙述改要点,逐块勾选建议' },
+  { modal: 'diagnostics', icon: IconGrid, title: '诊断报告', hint: '最近一次生成的引擎细节' },
+  { modal: 'history', icon: IconHistory, title: '会话历史', hint: '改参对照,每次生成一行' },
+  { modal: 'settings', icon: IconGear, title: 'AI 设置', hint: '服务商 / 模型 / API Key' },
 ];
 
 const MODAL_META: Record<Exclude<StudioModal, null>, { title: string; width: number }> = {
-  compress: { title: '✨ AI 精简', width: 860 },
-  diagnostics: { title: '🔍 诊断报告', width: 760 },
-  history: { title: '🕘 会话历史', width: 700 },
-  settings: { title: '⚙️ AI 设置', width: 560 },
+  compress: { title: 'AI 精简', width: 860 },
+  diagnostics: { title: '诊断报告', width: 760 },
+  history: { title: '会话历史', width: 700 },
+  settings: { title: 'AI 设置', width: 560 },
 };
 
 /** dev 环境的测试材料速载（生产环境接口 404，整卡自动隐藏） */
@@ -62,7 +70,7 @@ function FixturesCard() {
 
   return (
     <div className="hh-fixtures-card">
-      <b style={{ fontSize: 13 }}>🧪 测试材料</b>
+      <b style={{ fontSize: 13 }}>测试材料</b>
       <div className="text-muted" style={{ fontSize: 11 }}>
         packages/server/test/fixtures（仅开发环境）
       </div>
@@ -94,18 +102,26 @@ export default function StudioRail() {
       <div className="studio-col-body">
         <GenerateCard />
         <div className="hh-tiles">
-          {TILES.map((t) => (
-            <button
-              key={t.modal}
-              type="button"
-              className="hh-tile"
-              onClick={() => dispatch({ type: 'set_modal', modal: t.modal })}
-            >
-              <span className="hh-tile-icon" aria-hidden="true">{t.icon}</span>
-              <b>{t.title}</b>
-              <small>{t.hint}</small>
-            </button>
-          ))}
+          {TILES.map((t) => {
+            const TileIcon = t.icon;
+            return (
+              <button
+                key={t.modal}
+                type="button"
+                className="hh-tile"
+                title={t.hint}
+                onClick={() => dispatch({ type: 'set_modal', modal: t.modal })}
+              >
+                <span className="hh-tile-icon">
+                  <TileIcon />
+                </span>
+                <span className="hh-tile-row">
+                  <b>{t.title}</b>
+                  <IconChevron style={{ opacity: 0.4 }} />
+                </span>
+              </button>
+            );
+          })}
         </div>
         <FixturesCard />
       </div>

@@ -405,10 +405,12 @@
   font-size: 12px;
 }
 
+/* 功能瓦片——语言逐字取自设计稿:neutral/沙绿底交替、线稿图标在上、
+   粗体标题 + chevron 在下、hover 底色深一档(不用阴影跳变) */
 .hh-tiles {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 9px;
   margin-bottom: 10px;
 }
 .hh-tile {
@@ -416,31 +418,43 @@
   text-align: left;
   cursor: pointer;
   border-radius: 20px;
-  padding: 12px;
+  padding: 12px 13px;
   font-family: inherit;
+  color: var(--color-text);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  box-shadow: var(--shadow-sm);
-}
-.hh-tile:hover {
-  box-shadow: var(--shadow-md);
+  gap: 14px;
 }
 .hh-tile:nth-child(odd) {
-  background: var(--color-accent-100);
+  background: var(--color-neutral-100);
+}
+.hh-tile:nth-child(odd):hover {
+  background: var(--color-neutral-200);
+}
+.hh-tile:nth-child(odd) .hh-tile-icon {
+  color: var(--color-accent-700);
 }
 .hh-tile:nth-child(even) {
   background: var(--color-accent-2-100);
 }
+.hh-tile:nth-child(even):hover {
+  background: var(--color-accent-2-200);
+}
+.hh-tile:nth-child(even) .hh-tile-icon {
+  color: var(--color-accent-2-700);
+}
 .hh-tile .hh-tile-icon {
-  font-size: 16px;
+  display: flex;
 }
-.hh-tile b {
+.hh-tile-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.hh-tile-row b {
   font-size: 13px;
-}
-.hh-tile small {
-  font-size: 11px;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  flex: 1;
 }
 
 /* dev 测试材料卡:沙绿标注次要/开发者功能 */

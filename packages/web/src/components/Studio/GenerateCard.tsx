@@ -3,6 +3,7 @@
  * 折叠进「高级选项」——应急路径只留一个决策点（目标页数）。
  */
 import type { SceneId } from '../../types';
+import { IconFile } from './icons';
 import { useStudio } from './useStudioStore';
 import { useStudioActions } from './useStudioActions';
 
@@ -33,7 +34,9 @@ export default function GenerateCard() {
 
   return (
     <div className="hh-gen-card">
-      <b style={{ fontSize: 14 }}>📄 生成 PDF</b>
+      <b style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IconFile style={{ color: 'var(--color-accent-700)' }} /> 生成 PDF
+      </b>
       <div className="text-muted" style={{ fontSize: 12 }}>勾选的 {enabledCount} 份材料按序拼成一份小抄</div>
       <div className="hh-gen-row">
         <label>

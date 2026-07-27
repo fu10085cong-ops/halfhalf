@@ -5,6 +5,7 @@
  * 整个应用包在 DocumentDropSurface 里——拖文件到页面任意位置落成新材料卡。
  */
 import DocumentDropSurface from '../Scene/DocumentDropSurface';
+import { IconLogo } from './icons';
 import ChatStream from './ChatStream';
 import PdfOverlay from './PdfOverlay';
 import SourceEditor from './SourceEditor';
@@ -65,7 +66,9 @@ function StudioShell() {
       {(uploadPanel) => (
         <div className="studio-root">
           <header className="studio-header">
-            <span className="studio-badge" aria-hidden="true">半</span>
+            <span className="studio-badge" aria-hidden="true">
+              <IconLogo />
+            </span>
             <h1>HalfHalf</h1>
             <span className="studio-tagline">半开卷小抄工作台 —— 从材料到可打印 PDF</span>
             <a className="studio-back" href={window.location.pathname}>
