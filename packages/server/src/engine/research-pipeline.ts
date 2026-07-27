@@ -79,26 +79,24 @@ export function buildSummaryPrompt(query: string, hits: SearchHit[]): string {
 ${blocks}`;
 }
 
-/** 把模型产出与来源清单拼成最终 Markdown，保证每节都带可回查的 URL。 */
+/**
+ * 拼成最终 Markdown。
+ *
+ * 刻意**不把 URL 清单印进正文**：这份内容最终要排进半开卷小抄，版面寸土寸金，
+ * 而考场上 URL 既点不开也没法查，纯属占地方。溯源不靠正文里的链接——
+ * 完整来源保存在 summary.sources 里，由界面展示供用户回查。
+ */
 export function assembleResearchMarkdown(
   query: string,
   summary: string,
-  hits: SearchHit[]
+  _hits: SearchHit[]
 ): string {
-  const references = hits
-    .map((hit, index) => `${index + 1}. [${hit.title}](${hit.url}) — ${hit.domain}`)
-    .join('\n');
-
   return [
     `## ${query}`,
     '',
     '> 以下内容来自网络检索，**非教材口径**，请与课件核对后再采用。',
     '',
     summary.trim(),
-    '',
-    '### 来源',
-    '',
-    references,
   ].join('\n');
 }
 

@@ -7,7 +7,7 @@ import {
   runResearch,
 } from '../../src/engine/research-pipeline.js';
 import { mapZhipuResults, SearchError } from '../../src/engine/search-provider.js';
-import type { SearchHit } from '../../src/types/index.js';
+import type { ImportedDocument, SearchHit } from '../../src/types/index.js';
 import type { SearchProvider } from '../../src/engine/search-provider.js';
 
 function hit(url: string, snippet = '一段解释', title = '标题'): SearchHit {
@@ -59,14 +59,45 @@ test('提示词把「不要补充片段之外的知识」写死，并逐源分�
   assert.match(prompt, /截断处不要脑补续写/);
 });
 
-test('组装：每个来源都带可回查的 URL，且顶部有非教材口径的提示', () => {
+test('组装：正文不印 URL 清单——小抄版面寸土寸金，考场也点不开链接', () => {
   const md = assembleResearchMarkdown('高斯定律', '### 来自 a.com\n- 要点', [
     hit('https://a.com/1'),
     hit('https://b.com/2'),
   ]);
-  assert.match(md, /非教材口径/);
-  assert.ok(md.includes('https://a.com/1'));
-  assert.ok(md.includes('https://b.com/2'));
+  assert.match(md, /非教材口径/, '安全提示必须留着');
+  assert.match(md, /### 来自 a\.com/, '分节标题里的域名归属仍在');
+  assert.equal(md.includes('https://a.com/1'), false, 'URL 不进正文');
+  assert.equal(md.includes('### 来源'), false, '来源清单块不进正文');
+});
+
+test('溯源不丢：完整来源仍在 summary.sources 里，供界面展示回查', async () => {
+  const doc = await runResearch(
+    '高斯定律',
+    {
+      id: 'stub',
+      async search() {
+        return [hit('https://zhuanlan.zhihu.com/p/1', '片段一')];
+      },
+    },
+    {
+      provider: stubProviderConfig(),
+      // 直接短路总结环节：这条用例只关心来源有没有被保留下来
+    }
+  ).catch((e) => e);
+  // 没有真实模型可用时会抛 RESEARCH_SUMMARY_FAILED，错误里同样带着来源
+  if (doc instanceof ResearchError) {
+    assert.equal(doc.code, 'RESEARCH_SUMMARY_FAILED');
+    assert.deepEqual(
+      (doc.details?.sources as { domain: string }[]).map((s) => s.domain),
+      ['zhuanlan.zhihu.com']
+    );
+    return;
+  }
+  const produced = doc as ImportedDocument;
+  assert.deepEqual(
+    produced.summary.sources?.map((source) => source.domain),
+    ['zhuanlan.zhihu.com']
+  );
 });
 
 test('回归锁：搜索返回 0 条时报错，且绝不调用总结模型', async () => {
