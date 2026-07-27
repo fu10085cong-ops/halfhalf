@@ -81,8 +81,8 @@ Date: 2026-07-27
 | 模块 | 职责 | 依赖 |
 |---|---|---|
 | `SearchProvider`（接口） | `search(query, limit) → SearchHit[]` | 无 |
-| `ModelSearchProvider` | 走通义/智谱内置联网 | 现有 `ai-provider` |
-| `ApiSearchProvider` | Brave/Serper 适配器，**本期只留接口不实现** | 无 |
+| `ZhipuSearchProvider` | 智谱 `web_search` 接口，**本期主实现** | 现有 `ai-provider` 的白名单与 BYOK |
+| `BraveSearchProvider` | Brave 适配器，**本期只留接口不实现** | 无 |
 | `source-quality.ts` | 黑名单、同源去重、域名加权、正文门槛 | 纯函数 |
 | `research-pipeline.ts` | 串联搜索→筛→抓→总结，产出 `ImportedDocument` | 上述 + `importUrl` + `ai-structurize` |
 | `routes/research.ts` | `POST /api/research/jobs` 等 | pipeline + `import-job-store` |
@@ -170,8 +170,30 @@ Date: 2026-07-27
 - 跨轮次的检索历史与增量补搜
 - 自动判断「材料不够、该联网了」——永远由用户主动触发
 
-## 10. 已知风险
+## 10. 搜索源的选型验证（2026-07-27 实测）
 
-- **模型内置联网拿不到稳定的原文 URL。** 部分厂商只返回综合后的答案而非引用列表。若实测发现某家不给 URL，则该家在本功能中不可用（溯源是硬要求），需在 provider 预设里标注。这是选「模型联网优先」路线的已知代价，也是 `ApiSearchProvider` 接口必须提前留好的原因。
-- **中文内容农场的 SEO 常优于正经资料。** 黑名单 + 域名加权只能缓解，不能根治。真实使用后需要按实际结果迭代黑名单。
+设计初稿原本打算「先用模型内置联网走通」。动手前先验了一轮，结论推翻了这个选择，故记录在案。
+
+**DeepSeek 完全不具备联网能力，且失败方式是静默的：**
+
+| 试法 | 结果 |
+|---|---|
+| `enable_search: true`（通义风格参数） | **HTTP 200，参数被静默忽略**。响应 message 只有 `role`/`content` 两个字段，无任何引用信息；模型自述知识截止 2025-05 |
+| `tools: [{type:"web_search"}]` | HTTP 400，`unknown variant 'web_search', expected 'function'` |
+
+第一条是本功能最危险的失败模式的真实样本：**接口 200、格式完全正确、内容读起来也像模像样，但一个字都不来自网络**。若未经验证就基于「传 `enable_search` 就能联网」实现，产出会静默退化成模型凭记忆编造，而用户会把它打印出来带进考场。
+
+**因此改用智谱 `web_search` 独立接口作为主实现。** 理由：
+
+- 是纯搜索接口而非「带搜索的对话」，返回结构化结果**必然带 URL**——溯源是硬要求，这一点不能赌。
+- 中文覆盖好。本产品的材料是中文课程资料，英文索引为主的搜索源（Brave/Serper）在「戴维南定理」「剩余价值率」这类查询上质量明显偏低。
+- `open.bigmodel.cn` 已在 `ALLOWED_HOSTS` 白名单内，无需改动安全配置。
+- 一把 key 同时服务两步：搜索用 `web_search`，分节总结用 `glm-4-flash`。
+
+**前置条件**：需要一把智谱 key。开工前应先按同样方式实测一次 `web_search` 的真实返回结构（确认字段名、是否稳定带 URL、单次返回条数上限），再据此定 `SearchHit` 的映射。
+
+## 11. 其余已知风险
+
+- **中文内容农场的 SEO 常优于正经资料。** 黑名单 + 域名加权只能缓解，不能根治。真实使用后需按实际结果迭代黑名单。
 - **总结环节仍是模型。** 「只重组不新增」靠 prompt 约束，不是硬保证。这也是必须保留原文 URL、让用户能回查的原因。
+- **搜索质量无法在 CI 里回归。** 单测只能覆盖质量闸的纯函数部分；「搜出来的东西好不好」只能靠 `bench:research` 人工看。
