@@ -12,6 +12,7 @@ import PdfOverlay from './PdfOverlay';
 import SourceEditor from './SourceEditor';
 import SourcesRail from './SourcesRail';
 import StudioRail from './StudioRail';
+import { hasSourcePages } from '../../lib/documentImport';
 import { makeSource, newId, StudioProvider, useStudio } from './useStudioStore';
 import './Studio.css';
 
@@ -56,6 +57,10 @@ function StudioShell() {
           source: makeSource({
             kind: 'file',
             raw: markdown,
+            // 保真页文档按图片口径豁免转换(内容本体是页图,AI 转换会毁掉它)
+            ...(hasSourcePages(markdown)
+              ? { markdown, status: 'converted' as const }
+              : {}),
             title: summary?.originalName.replace(/\.(docx|pdf)$/i, ''),
             importSummary: summary
               ? [

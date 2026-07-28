@@ -52,6 +52,14 @@
 - 501 检测在 `convertText` 的非 SSE 响应分支;`StudioMessage.configError` 驱动
   「去 AI 设置」按钮(convert 错误卡与汇总错误卡共用 `GoAiSettings`)。
 
+## 修订
+
+- 2026-07-28(同日补):**保真页文档豁免**。原设计只豁免了纯图片材料,漏了含
+  `HH_SOURCE_PAGE` 页图的扫描/混合 PDF——它们落地为 raw 会被闸强制送 AI,
+  巨型 base64 进提示词必炸,而它们本该走已删除的「跳过 AI」。修正:落地时检测
+  `hasSourcePages(markdown)`(lib/documentImport.ts),命中即按图片口径直接
+  converted。两个落地点(AddSourceMenu 上传 / StudioApp 拖放)同步。
+
 ## 验证
 
 - 静态:`grep "skipAi|跳过 AI|原文兜底"` 在 Studio 目录零命中;web tsc + 生产构建。

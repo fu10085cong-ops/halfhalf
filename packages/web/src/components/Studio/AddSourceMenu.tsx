@@ -5,7 +5,7 @@
  */
 import { useRef, useState } from 'react';
 import { apiFetch } from '../../api';
-import { importDocument, unsupportedFileReason } from '../../lib/documentImport';
+import { hasSourcePages, importDocument, unsupportedFileReason } from '../../lib/documentImport';
 import { IconClipboard, IconDoc, IconLink } from './icons';
 import { makeSource, useStudio } from './useStudioStore';
 import type { KnowledgeDocument } from '../../types/restructure';
@@ -167,11 +167,14 @@ export default function AddSourceMenu() {
         if (!outcome.cancelled) setErrors((cur) => [...cur, `${file.name}：${outcome.error}`]);
         continue;
       }
+      // 保真页文档按图片口径豁免转换(内容本体是页图,AI 转换会毁掉它)
+      const faithful = hasSourcePages(outcome.markdown);
       dispatch({
         type: 'add_source',
         source: makeSource({
           kind: 'file',
           raw: outcome.markdown,
+          ...(faithful ? { markdown: outcome.markdown, status: 'converted' as const } : {}),
           title: outcome.summary.originalName.replace(/\.(docx|pdf)$/i, ''),
           importSummary: summarize(outcome.summary.kind as 'docx' | 'pdf', outcome.summary),
           // PDF 才有知识节点；带上它右栏「重点规划」才能用（会话内，不落盘）

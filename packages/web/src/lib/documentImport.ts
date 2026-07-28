@@ -103,6 +103,15 @@ export interface ImportOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * 保真页文档:含 HH_SOURCE_PAGE 页图(扫描/混合 PDF 的整页渲染兜底)。
+ * 这类内容本体是图,与图片材料同一豁免口径(统一输入闸,FORMAT.md §7)——
+ * 不经文本 AI 转换:巨型 base64 进提示词是 token 灾难,且 AI 会毁掉页图与严格序。
+ */
+export function hasSourcePages(markdown: string): boolean {
+  return markdown.includes('![HH_SOURCE_PAGE_');
+}
+
 /** 上传前的本地闸：只认 .docx/.pdf（图片走各界面自己的通道） */
 export function unsupportedFileReason(name: string): string | null {
   if (/\.(?:docx|pdf)$/i.test(name)) return null;
