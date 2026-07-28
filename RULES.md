@@ -605,3 +605,25 @@ table**（空格对齐+虚线，Word 转换的典型产物）——引擎只认 
 
 下一批候选：repack（默认开）、jointSpan/holeFill（默认开的对偶机制）、
 stretchCapPt/stretchLastCapPt（数值挡位）。
+
+**第二轮：repack / jointSpan / holeFill / stretchFill / stretchLastCapPt（2026-07-28）
+——五个全判"有贡献，保留"，零反例**：
+
+- **repack=off**：8/12 判例变差、无一变好。最重 cs-programming −2pt（15.5→13.5、
+  页1 填充 95→70）、test −1.5pt、os-large −1pt；poli-econ/word-paste/history/db
+  各 −0.5pt。页内换位是字号收益最大的单一机制。
+- **jointSpan=off**：6/12 变差、无一变好——data-analysis/word-paste 各 −1pt、
+  cs/os/history 各 −0.5pt、network-tables 填充 −5pp。
+- **holeFill=off**：11/12 一致，唯一生效判例 data-analysis −0.5pt/页1 −5pp——
+  单判例但真实，且零成本（其余判例完全不触发）。
+- **stretch=off**：字号页数全程不动（符合"只收尾放大"的设计），填充普跌；
+  最重 cs 页2 99→55。目检（cs 双版 PNG 对照）：开着是真·满版——末页全宽、
+  无截断、结尾干净；关掉后同样内容缩在左 2/3，右侧整条白带，残页观感。
+- **lastCap=2**（末页加成归零）：5 判例填充小跌（poli-econ/os-large 页2 各 −2pp、
+  java 页2 −3pp）、无一变好。末页更高的伸展顶有效。
+
+**两轮小结**：7 个机制开关全部数据实锤保留，2 个死参数拆除。消融阶段基本收官；
+剩余项性质不同：monotonicOrder 需要严格源序（PDF 保真页）判例，冻结套件里没有
+——挂账等 knowledge 判例入库后补测；gutterMm/widthTiers/maxAspect 的逐场景取值
+与 stretchCapPt 数值挡属**校准**（调值不是留删），另开校准轮并警惕 §4.9 第一轮
+记录的 network-tables 式幻觉收益。
