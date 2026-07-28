@@ -58,8 +58,6 @@ export interface GridSearchParams {
   strategy: PackStrategy;
   /** 宽内容原子缩放的可读下限 */
   minScale: number;
-  /** 横向格数，默认 24 */
-  unitsX?: number;
   /** 强制留白 mm，默认 = 1 格宽（约 7.9mm）。默认版疏朗优先——这不是最终结果，
    *  后面还有"放大"（保持留白重搜字号）或编辑器人为微调；想更密显式传小值 */
   gutterMm?: number;
@@ -71,10 +69,8 @@ export interface GridSearchParams {
   repack?: boolean;
   /** 跨页回填：牺牲跨页阅读顺序换密度，默认 false——顺序刚性弱（S2）才该开 */
   backfill?: boolean;
-  /** 字号搜索精度 pt，默认取 SEARCH_CONFIG.defaultPrecision */
   /** Strict source documents never jump back into an earlier visual column hole. */
   monotonicOrder?: boolean;
-  precision?: number;
   /** 本地图片解析基准目录，透传做 base64 内嵌 */
   imageBaseDir?: string;
   /**
@@ -164,7 +160,6 @@ export function resolveGrid(params: {
   paperSize: PaperSize;
   orientation: ResolvedOrientation;
   margins: Margins;
-  unitsX?: number;
   gutterMm?: number;
   widthTiers?: number[];
 }): { grid: GridSpec; contentHMm: number } {
@@ -176,7 +171,7 @@ export function resolveGrid(params: {
   const contentW = dims.width - params.margins.left - params.margins.right;
   const contentH = dims.height - params.margins.top - params.margins.bottom;
 
-  const unitsX = params.unitsX ?? GRID_DEFAULTS.unitsX;
+  const unitsX = GRID_DEFAULTS.unitsX;
   const unitMm = contentW / unitsX;
   const widthTiers = [...new Set(params.widthTiers ?? GRID_DEFAULTS.widthTiers)]
     .filter((t) => t >= 1 && t <= unitsX)
@@ -438,7 +433,7 @@ export async function searchGridFontSize(
 
   // 精度钳到 0.5pt 网格步长：mid 吸附在 0.5 网格上，precision 比网格细时区间收缩到
   // 0.5 后 mid 会四舍五入成 hi——hi 侧探测失败时区间不再收缩，循环永不终止
-  const precision = Math.max(params.precision ?? SEARCH_CONFIG.defaultPrecision, 0.5);
+  const precision = Math.max(SEARCH_CONFIG.defaultPrecision, 0.5);
   const history: { fontSize: number; pages: number }[] = [];
   const record = (t: GridTrial) => {
     history.push({ fontSize: t.fontSize, pages: t.pages });

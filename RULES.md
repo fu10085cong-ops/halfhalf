@@ -573,3 +573,35 @@ table**（空格对齐+虚线，Word 转换的典型产物）——引擎只认 
    text-cram 2mm 有先例）：java 再 +0.5pt、db 再 +1pt、code-heavy +0.5pt。
 合计 java 8→9pt（+12.5%）/96+95%、db 11→12.5pt/91+99%、cs 15.5pt/95+99%。
 剩余选项挂货架：单行迷你代码块内联化（`==` 这类不值得一整个框，需新机制待批）。
+
+### 4.9 机制消融战役（2026-07-28 起，滚动记账）
+
+背景：`GridSearchParams` 累积 13 个可选开关，机制交互空间乘法增长（§4.6/4.7 战役
+的遗产）。用户定调：逐开关单变量消融，**无贡献即删**；阈值/取舍必须数据说话。
+方法口径：冻结 bench 套件 12 材料逐开关"中和"（关掉或设 ∞），对照 字号/页数/填充/
+超高/cramped；数字有疑必目检。
+
+**审计先行（动实验前先查引用）**：`unitsX`、`precision` 两个参数全仓零传参
+（产品与测试脚本都只吃默认）——纯管道死面，直接拆除硬编码默认值
+（24 格制 / SEARCH_CONFIG.defaultPrecision），bench 与基线逐项一致，零行为变化。
+`imageBaseDir` 是实验脚本（run-ab/run-grid/run-scene）在用的正当测试面，保留。
+开关面 13 → 11。
+
+**第一轮：backfill / maxAspect（2026-07-28）——两个都判"有贡献，保留"**：
+
+- **backfill=off 消融**：唯一生效判例 data-analysis（S2 弱序 + 用户勾乱序）
+  13pt→12pt、填充 98/97→88/88——开关贡献 +1pt/+10pp，实打实。补充对
+  poli-econ×politics（弱序第二触发路径）打平无害（材料本就排满，无洞可回填）。
+- **maxAspect=∞ 消融**：数字混合（6 判例更差：poli-econ 2页→3页未达标、
+  word-paste −2pt;4 判例"更好"：network-tables +1pt/+16pp、os-large/prob-band/
+  java-oop 各 +0.5pt）。**目检裁决**：对"收益最大"的 network-tables 双版转 PNG
+  对照——∞ 版的 +1pt 靠放行又高又窄的竹竿块换密度，代价是版面秩序崩坏
+  （文档大标题沉到页面左下角、章节阅读顺序变 四→一→二→五→三、状态码表被挤成
+  一字一行的细柱）。指标收益 = 观感幻觉，约束保住。这是"字号页数指标完全体现
+  不出的问题靠目检抓"的又一判例（前例：弃页、标题沉底，EXPERIMENT.md ④）。
+- **挂账（调参不是消融，另开一轮）**：os-large/prob-band/java-oop 在放宽 aspect
+  下各有 +0.5pt 头寸，提示逐场景 maxAspect 取值（4/1.3/1.5/2）有校准空间——
+  需带目检的单变量轮，且警惕 network-tables 式幻觉收益。
+
+下一批候选：repack（默认开）、jointSpan/holeFill（默认开的对偶机制）、
+stretchCapPt/stretchLastCapPt（数值挡位）。
