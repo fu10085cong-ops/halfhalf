@@ -627,3 +627,22 @@ stretchCapPt/stretchLastCapPt（数值挡位）。
 ——挂账等 knowledge 判例入库后补测；gutterMm/widthTiers/maxAspect 的逐场景取值
 与 stretchCapPt 数值挡属**校准**（调值不是留删），另开校准轮并警惕 §4.9 第一轮
 记录的 network-tables 式幻觉收益。
+
+**校准轮：逐场景 maxAspect 取值 + stretchCapPt（2026-07-28）——全线维持现值，零改动**：
+
+第一轮挂账的"+0.5pt 头寸"逐场景试探收割，结论：**头寸不可整场景收割**，
+每个放宽方向都有同场景反例——
+
+- formula 1.3→1.6/2：prob-band 填充 +4pp，但 test.md（当初两侧夹逼校准 1.3 的
+  判例）−0.5pt 或填充变差。拒。
+- code 1.5→2：java-oop +0.5pt 且填充更好，但 cs 页1 −4pp、code-heavy −5pp。拒。
+- cram 4→6：os-large +0.5pt/+4pp，但 word-paste/history-long 各 −0.5pt。拒。
+- balanced 2→2.5：network-tables 不动，却通过 **B1 双跑裁决的另一侧候选**把
+  prob-band 拖掉 0.5pt——场景取值经由裁决机制跨场景耦合，动任何一个值都必须
+  全套件跑（本轮方法论新发现）。拒。
+- stretchCapPt 2→3：唯一零反例正向（3 判例填充 +1~2pp，字号页数全不动）。
+  目检（java-oop 双版对照）：cap3 无扎眼断差，但**收益同样不可感知**——填充
+  口径涨的只是伸展盒面积（字大一点点），非内容密度。无感知收益不动默认值。拒。
+
+至此 §4.9 消融+校准全部收官：7 机制保留、2 死参拆除、5 组场景值维持现值,
+全部有对照数据背书。唯余 monotonicOrder 挂账（等严格源序判例）。
