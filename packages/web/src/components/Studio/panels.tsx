@@ -2,8 +2,9 @@
  * 居中弹窗的面板内容（精简 / 诊断 / 历史 / AI 设置 / 重点规划）——由 StudioRail 的瓦片打开。
  * 精简作用域 = 单个已转换 source（spec 已拍;组合级 range 映射是坑,二期再说）。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api';
+import { submitJsonJob, type ImportProgress } from '../../lib/documentImport';
 import type { AiCompressResponse, AiCompressSummary, BlockSuggestion } from '../../types';
 import type {
   FocusPriority,
@@ -12,7 +13,8 @@ import type {
   RestructurePlan,
 } from '../../types/restructure';
 import { AI_DEFAULTS, AI_KEYS, byokProvider, lsGet, lsSet } from './aiConfig';
-import { useStudio } from './useStudioStore';
+import { IconAlert, IconCheck, IconLock, IconScale } from './icons';
+import { makeSource, useStudio } from './useStudioStore';
 
 /** 能否勾选应用：非跳过、有实际改动、原子/公式安全网都过 */
 function isApplicable(s: BlockSuggestion): boolean {
@@ -105,7 +107,7 @@ export function CompressPanel() {
         把一份材料的叙述性文字改写成要点式——只出建议，勾选后「应用」才写回。公式/代码/表格/图片不会被动。
       </div>
       {candidates.length === 0 ? (
-        <div className="hh-empty">没有已转换的材料——先在对话流里「转换生料」（或对材料「跳过 AI」）。</div>
+        <div className="hh-empty">没有已转换的材料——先在对话流里「转换生料」。</div>
       ) : (
         <>
           <select
@@ -156,10 +158,10 @@ export function CompressPanel() {
                 </span>
               )}
               {s.safety.ok ? (
-                <span className="hh-msg-ok">✅</span>
+                <span className="hh-msg-ok"><IconCheck size={12} /></span>
               ) : (
                 <span style={{ color: s.skipped ? '#64748b' : '#b45309' }}>
-                  {s.skipped ? '—' : '⚠️'} {s.safety.reason}
+                  {s.skipped ? '—' : <IconAlert />} {s.safety.reason}
                 </span>
               )}
             </label>
@@ -195,7 +197,14 @@ export function DiagnosticsPanel() {
       </div>
       {(r.trace ?? []).map((e, i) => (
         <div key={i} style={{ color: e.kind === 'adjudication' ? '#7c3aed' : '#555' }}>
-          {e.kind === 'hard' ? '🔒' : e.kind === 'adjudication' ? '⚖️' : '·'} [{e.rule}] {e.detail}
+          {e.kind === 'hard' ? (
+            <IconLock size={11} style={{ verticalAlign: '-1px' }} />
+          ) : e.kind === 'adjudication' ? (
+            <IconScale size={11} style={{ verticalAlign: '-1px' }} />
+          ) : (
+            '·'
+          )}{' '}
+          [{e.rule}] {e.detail}
         </div>
       ))}
       {d && (
@@ -239,7 +248,7 @@ export function DiagnosticsPanel() {
                     <td>{b.page ?? '—'}</td>
                     <td>{b.scale < 1 ? `×${b.scale}` : '—'}</td>
                     <td>
-                      {b.oversized ? '⛔' : b.belowMinScale ? '⚠️' : ''}
+                      {b.oversized || b.belowMinScale ? <IconAlert /> : ''}
                       {b.stretchedPt ? `↗${b.stretchedPt}pt` : ''}
                     </td>
                   </tr>
@@ -426,8 +435,17 @@ export function FocusPanel() {
     );
   }
 
+  // 统一输入闸:重构算子是确定性的保留/剔除,不能把未经 AI 转换的生料漂白成 converted
+  if (planned.status === 'raw') {
+    return (
+      <div className="hh-empty">
+        《{planned.title}》还是生料——先在对话流里转换成标准 Markdown，再来做重点规划。
+      </div>
+    );
+  }
+
   const document = planned.knowledge;
-  const sourceMarkdown = planned.markdown || planned.raw;
+  const sourceMarkdown = planned.markdown;
 
   const generatePlan = async () => {
     const mustQueries = splitTopics(keyTopics);
@@ -491,7 +509,8 @@ export function FocusPanel() {
         throw new Error(('error' in data && data.error) || `HTTP ${resp.status}`);
       }
       setBefore(snapshot);
-      dispatch({ type: 'update_source', id: planned.id, patch: { markdown: data.markdown, status: 'converted' } });
+      // 输入必已 converted(上方生料拦截),这里只更新内容不改身份
+      dispatch({ type: 'update_source', id: planned.id, patch: { markdown: data.markdown } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -603,6 +622,140 @@ export function FocusPanel() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ---------- 联网补洞 ----------
+
+/**
+ * 给已有材料的缺口找网上解释。产出是一张候选卡（默认不参与排版），
+ * 用户看过、可删节后才勾选启用——网上内容不等于本课口径。
+ */
+export function ResearchPanel() {
+  const { state, dispatch } = useStudio();
+  const withKnowledge = state.sources.filter((s) => s.knowledge);
+
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  /** 从知识节点取文字填进查询框——搜什么始终对用户可见可改 */
+  const useNode = (text: string) => {
+    setQuery(text.slice(0, 60));
+    setError(null);
+  };
+
+  const run = async () => {
+    const trimmed = query.trim();
+    if (!trimmed || busy) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    setProgress({ progress: 0, stage: 'queued', message: '已提交检索' });
+
+    const outcome = await submitJsonJob(
+      '/api/research/jobs',
+      { query: trimmed },
+      { signal: controller.signal, onProgress: setProgress }
+    );
+
+    setBusy(false);
+    setProgress(null);
+    abortRef.current = null;
+
+    if (!outcome.ok) {
+      if (!outcome.cancelled) setError(outcome.error);
+      return;
+    }
+    dispatch({
+      type: 'add_source',
+      source: {
+        ...makeSource({
+          kind: 'url',
+          raw: outcome.markdown,
+          markdown: outcome.markdown,
+          status: 'converted',
+          title: `检索：${trimmed.slice(0, 30)}`,
+          importSummary: `网络检索 · ${outcome.summary.sources?.length ?? 0} 个来源`,
+        }),
+        // 默认不参与排版：必须看过、勾选才进 PDF
+        enabled: false,
+      },
+    });
+    setDone(`已生成候选材料，采纳 ${outcome.summary.sources?.length ?? 0} 个来源。它默认不参与排版——请在左栏审阅后勾选启用。`);
+  };
+
+  return (
+    <div className="hh-focus">
+      <div className="text-muted hh-focus-stat">
+        给材料里没展开的知识点找网上解释。结果<b>不会</b>自动进入排版，需要你审阅后勾选。
+      </div>
+
+      {withKnowledge.length > 0 && (
+        <div className="hh-research-nodes">
+          <span className="text-muted">从材料里挑一个缺口（点一下填进下面的输入框，可改）：</span>
+          <div className="hh-research-node-list">
+            {withKnowledge
+              .flatMap((s) => (s.knowledge?.nodes ?? []).slice(0, 60))
+              .filter((n) => n.text && n.text.length > 3)
+              .slice(0, 40)
+              .map((node) => (
+                <button key={node.id} type="button" onClick={() => useNode(node.text)}>
+                  {node.text.slice(0, 24)}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
+      <label className="hh-focus-field">
+        <span>检索什么</span>
+        <input
+          value={query}
+          placeholder="例：戴维南定理 适用条件"
+          disabled={busy}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void run();
+          }}
+        />
+      </label>
+
+      <div className="hh-focus-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy || !query.trim()}
+          onClick={() => void run()}
+        >
+          {busy ? '检索中…' : '开始检索'}
+        </button>
+        {busy && (
+          <button type="button" className="btn" onClick={() => abortRef.current?.abort()}>
+            取消
+          </button>
+        )}
+      </div>
+
+      {progress && (
+        <div className="hh-upload-progress">
+          <div className="hh-upload-line">
+            <span className="text-muted">{progress.message}</span>
+          </div>
+          <span className="hh-upload-bar">
+            <i style={{ width: `${progress.progress}%` }} />
+          </span>
+        </div>
+      )}
+
+      {error && <div className="hh-msg-err">{error}</div>}
+      {done && <div className="hh-msg-ok">{done}</div>}
     </div>
   );
 }

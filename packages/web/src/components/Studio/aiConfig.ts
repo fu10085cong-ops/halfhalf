@@ -1,6 +1,6 @@
 /**
- * BYOK AI 配置（endpoint/model/key）——localStorage key 与旧界面 ScenePanel 完全相同，
- * 两个界面共享同一份配置；key 只存本地浏览器，请求时才进内存过后端。
+ * BYOK AI 配置（endpoint/model/key）——localStorage key 沿用旧界面时代的命名，
+ * 老用户已存的配置无缝继承；key 只存本地浏览器，请求时才进内存过后端。
  */
 import type { AiProviderConfig } from '../../types';
 

@@ -1,6 +1,6 @@
 /**
  * 解析 text/event-stream 帧（event: X / data: JSON），逐帧回调。
- * ChatIntake 与 Studio 对话流共用；契约见 packages/server/API.md 的 /api/ai/structurize。
+ * Studio 转换/对话流共用；契约见 packages/server/API.md 的 /api/ai/structurize。
  */
 export async function consumeSse(
   resp: Response,

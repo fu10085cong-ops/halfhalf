@@ -1,6 +1,6 @@
 /**
  * 渲染共享资产：KaTeX 内联样式、打印样式、Mermaid 预渲染。
- * render-pdf.ts（整页排版/导出）和 measure-blocks.ts（分块测量）都依赖这些，抽出来避免重复。
+ * render-layout.ts（网格排版/导出）和 measure-blocks.ts（分块测量）都依赖这些，抽出来避免重复。
  */
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';

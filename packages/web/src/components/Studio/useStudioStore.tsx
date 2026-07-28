@@ -23,7 +23,7 @@ export interface Source {
   kind: 'paste' | 'file' | 'url';
   /** 原始生料（粘贴原文/文档提取物） */
   raw: string;
-  /** 标准 Markdown（转换产物；「跳过 AI」时 = raw）；未转换为空串 */
+  /** 标准 Markdown（统一经 AI 转换的产物）；未转换为空串 */
   markdown: string;
   status: 'raw' | 'converted';
   /** 是否参与排版（拼接口径：enabled 的按序拼接） */
@@ -57,7 +57,7 @@ export interface PdfCardData {
 
 /** 操作流对话的一张卡；convert/pdf/chat 卡随请求推进原地更新（phase）。
  *  kind 'chat' = 自由对话轮（/api/ai/chat）——只有它进对话历史，动作卡不算。
- *  kind 'guide' = 新生料落卡后的自动引导（转换是产品特色:检测到生料→一键转换/跳过） */
+ *  kind 'guide' = 新生料落卡后的自动引导（转换是产品特色也是必经环节:检测到生料→一键转换） */
 export interface StudioMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -72,6 +72,14 @@ export interface StudioMessage {
   check?: StructurizeCheck | null;
   pdf?: PdfCardData | null;
   error?: string;
+  /** chat 卡:该轮圈定的材料(undefined = 全部);assistant 卡上供「写回」定位 */
+  scopeIds?: string[];
+  /** chat assistant 卡:发起该轮的用户原话,供错误卡「重试」原样重发 */
+  prompt?: string;
+  /** 手动停止:done 但内容是截到停止时刻的部分回复 */
+  stopped?: boolean;
+  /** 错误源于 AI 未配置(501)——错误卡上渲染「去 AI 设置」按钮 */
+  configError?: boolean;
 }
 
 /** 生成参数（右栏生成卡持有，中栏动作条读取） */
@@ -97,7 +105,14 @@ export interface RunRecord {
 }
 
 /** 居中弹窗（Organic 弹窗语言）：同一时刻只开一个 */
-export type StudioModal = 'compress' | 'diagnostics' | 'history' | 'settings' | 'focus' | null;
+export type StudioModal =
+  | 'compress'
+  | 'diagnostics'
+  | 'history'
+  | 'settings'
+  | 'focus'
+  | 'research'
+  | null;
 
 export interface StudioState {
   sources: Source[];
@@ -322,8 +337,22 @@ export function makeSource(init: {
   };
 }
 
-/** 排版输入 = enabled 的 sources 按序拼接（已转换用 markdown，生料用 raw），空行分隔 */
-export function combineEnabledMarkdown(sources: Source[]): string {
+/**
+ * 排版输入 = enabled 且**已转换**的 sources 按序拼接,空行分隔。
+ * 统一输入闸(spec: docs/superpowers/specs/2026-07-28-unified-input-gate-design.md):
+ * 生料一律不进排版——这里是最后一道硬保险,上游 generate 会先把生料全部转换。
+ */
+export function combineForLayout(sources: Source[]): string {
+  return sources
+    .filter((s) => s.enabled && s.status === 'converted')
+    .map((s) => s.markdown)
+    .filter((t) => t.trim().length > 0)
+    .join('\n\n');
+}
+
+/** 对话上下文 = enabled 的 sources 按序拼接(已转换用 markdown,生料用 raw)。
+ *  对话允许吃生料——「先问问这份材料讲什么再决定转不转」是正当用法,与排版口径刻意不同 */
+export function combineForChat(sources: Source[]): string {
   return sources
     .filter((s) => s.enabled)
     .map((s) => (s.status === 'converted' && s.markdown ? s.markdown : s.raw))

@@ -16,17 +16,20 @@ import { chunkMarkdown } from './chunk-markdown.js';
 import { precheckFormulas } from './precheck-formulas.js';
 
 /**
- * prompt 里的结构约束与切块器对齐：每 ## 节 ≤800 字 = chunkMarkdown 默认 maxBlockChars，
+ * 格式契约的唯一权威在 docs/FORMAT.md——本提示词、下方 checkStructure、chunkMarkdown
+ * 三处都对齐它;改格式先改文档再同步这里。
+ * 结构约束与切块器对齐:每 ## 节 ≤800 字 = chunkMarkdown 默认 maxBlockChars,
  * 保证 AI 产出的节直接就是健康的排版原子粒度。
  */
 export const STRUCTURIZE_SYSTEM_PROMPT = `你是 HalfHalf 的材料结构化助手。用户会粘贴任意形态的复习材料（Word 文本、课件、聊天记录、零散要点）。你的唯一任务：把它整理成标准 Markdown。只重组，不新增知识，不做语义压缩。
 
 格式规范：
-1. 用一个 # 总标题、若干 ## 分节；每个 ## 节的正文不超过 800 字，内容多就多分几节（可用 ### 细分）。
-2. 数学公式一律用 $...$（行内）或 $$...$$（独立成行）的 LaTeX，不用 Unicode 上下标拼公式。
+1. 用一个 # 总标题、若干 ## 分节；每个 ## 节的正文不超过 800 字，内容多就多分几节（可用 ### 细分）。标题一律用 # 井号写法，禁止在文字下面画 --- 或 === 当标题。
+2. 数学公式一律用 $...$（行内）或 $$...$$（独立成行）的 LaTeX；禁止用 Unicode 上下标字符（x²、H₂O 这类）拼公式。
 3. 表格一律用 GFM 管道表格（| 表头 | … |，第二行 |---|---|）。输入里"空格对齐 + 虚线行"的伪表格（Word/Pandoc 转换的常见产物）、用空格或制表符对齐的"名称 含义"键值行，都必须转成管道表格——它们不转的话在排版里会塌成一团文字。代码用 \`\`\` 围栏并标语言。
-4. 保真红线：原文里的公式、数字、定义、结论一个不丢、一个不改；删掉的只能是与知识无关的噪音（页眉页脚、"如下图所示"、乱码、重复内容）。
-5. 只输出 Markdown 正文本身：不要解释你做了什么，不要把整个文档包进代码围栏。
+4. 允许的元素只有：标题、段落、有序/无序列表（嵌套最多两层）、粗体/斜体、行内代码、围栏代码、管道表格、LaTeX 公式、独立成行的图片、引用块（仅原文自带的提示语）。**禁止**：超链接（这是要印在纸上的，去掉链接语法只保留文字）、分隔线 ---、内联 HTML 标签、脚注、任务列表、删除线。
+5. 保真红线：原文里的公式、数字、定义、结论一个不丢、一个不改；删掉的只能是与知识无关的噪音（页眉页脚、"如下图所示"、乱码、重复内容）。
+6. 只输出 Markdown 正文本身：不要解释你做了什么，不要把整个文档包进代码围栏。
 
 禁止：回答题目、生成题库或答案、补充用户材料里没有的知识。`;
 
@@ -72,7 +75,69 @@ export async function checkStructure(markdown: string): Promise<StructurizeCheck
     const samples = formulaIssues.slice(0, 3).map((i) => i.message).join('；');
     problems.push(`有 ${formulaIssues.length} 处公式无法渲染（KaTeX）：${samples}`);
   }
+  problems.push(...checkElementWhitelist(markdown));
   return { ok: problems.length === 0, problems, blockCount: blocks.length };
+}
+
+/** 白名单扫描前把"非散文"内容抹掉:围栏/行内代码按代码对待,公式里的 <、^ 是数学 */
+function maskNonProse(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, ' ')
+    .replace(/\$\$[\s\S]*?\$\$/g, ' ')
+    .replace(/\$[^$\n]*\$/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ');
+}
+
+/** Unicode 上下标字符(公式必须走 LaTeX,这些字符字体覆盖不稳、KaTeX 管不着) */
+const UNICODE_SUPSUB = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ⁿⁱ₀₁₂₃₄₅₆₇₈₉₊₋ₐₑₓₙₘ]/gu;
+/** 超链接:[文字](http…) 与 <http…> 自动链接;(?<!!) 放过图片 ![alt](http…) */
+const MD_LINK = /(?<!!)\[[^\]\n]*\]\(\s*https?:\/\/[^)]*\)|<https?:\/\/[^>\s]+>/g;
+/** 整行分隔线或 setext 下划线(三个以上的横线、星号或下划线):FORMAT.md 禁用,标题一律 ATX */
+const DIVIDER_LINE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+/** 裸 HTML 标签(不带属性的常见泄漏形态)。刻意不匹配带属性写法——
+ *  "若 a<b 且 c>d" 这类比较符散文会被宽泛正则误伤,窄匹配零误报优先 */
+const BARE_HTML_TAG = /<\/?(?:br|hr|b|i|u|em|strong|p|div|span|sub|sup|table|tr|td|th|ul|ol|li|img|a|code|pre|center|font)\s*\/?>/i;
+
+/**
+ * 元素封闭子集体检(docs/FORMAT.md §2):白名单外的元素明确拒绝。
+ * 全部是毫秒级正则;只查能零误报判定的——键值行伪表格等模糊形态仍靠提示词约束。
+ */
+function checkElementWhitelist(markdown: string): string[] {
+  const problems: string[] = [];
+  const prose = maskNonProse(markdown);
+
+  // 追问必须逐处点名带上下文——实测只给一个示例时,模型只修被点名的那处
+  const supsubSites: string[] = [];
+  for (const m of prose.matchAll(UNICODE_SUPSUB)) {
+    const at = m.index ?? 0;
+    const context = prose.slice(Math.max(0, at - 6), at + 7).replace(/\s+/g, ' ').trim();
+    if (!supsubSites.includes(context)) supsubSites.push(context);
+    if (supsubSites.length >= 5) break;
+  }
+  if (supsubSites.length > 0) {
+    problems.push(
+      `有 Unicode 上下标字符,逐处改写成 $...$ 的 LaTeX(如 x² 写成 $x^2$、H₂O 写成 $H_2O$):${supsubSites.map((s) => `「${s}」`).join('、')}`
+    );
+  }
+  const links = prose.match(MD_LINK);
+  if (links) {
+    problems.push(
+      `有 ${links.length} 处超链接——这是要印在纸上的，去掉链接语法只保留文字`
+    );
+  }
+  const dividers = prose.split('\n').filter((l) => DIVIDER_LINE.test(l));
+  if (dividers.length > 0) {
+    problems.push(
+      `有 ${dividers.length} 处分隔线或下划线式标题（---/***/___）——标题一律用 # 井号，分隔线删掉`
+    );
+  }
+  const htmlTag = prose.match(BARE_HTML_TAG);
+  if (htmlTag) {
+    problems.push(
+      `出现内联 HTML 标签（如「${htmlTag[0]}」）——排版不支持 HTML，上下标用 LaTeX、换行用空行`
+    );
+  }
+  return problems;
 }
 
 /** AI 常把整个文档包进 \`\`\`markdown 围栏——剥掉最外层（只在首尾恰好成对时） */

@@ -118,7 +118,7 @@ table {
   border-collapse: collapse;
   width: 100%;
   break-inside: avoid;
-  /* 是否通栏由 render-pdf.ts 的 markOverflowingAtoms 在渲染时按实际宽度决定：
+  /* 是否通栏由渲染侧按实际宽度决定（旧管线的 markOverflowingAtoms 判据沿用）：
      只有塞不进当前栏宽的宽表格才会被设成 column-span:all，能塞进栏的照常分栏，
      兼顾内容完整性和信息密度。 */
 }

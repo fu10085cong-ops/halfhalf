@@ -78,7 +78,7 @@ function inlineImageSrc(src: string, baseDir?: string): string {
  * 将 Markdown 转换为可直接打印的 HTML 片段。
  * - 代码块用 Shiki 高亮成带内联样式的静态 HTML，不依赖运行时 JS
  * - 数学/物理公式用 KaTeX 同步渲染
- * - mermaid 代码块先转换成占位 div（真正渲染需要浏览器环境，交给 render-pdf 中的预渲染阶段）
+ * - mermaid 代码块先转换成占位 div（真正渲染需要浏览器环境，交给渲染侧的预渲染阶段）
  * - 图片打上统一 class，交给 print.css 做页面内等比缩放
  */
 export async function markdownToHtml(

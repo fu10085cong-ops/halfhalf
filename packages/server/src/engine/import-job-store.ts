@@ -336,23 +336,6 @@ export function cancelImportJob(jobId: string, owner: string): ImportJobSnapshot
   return snapshot(job);
 }
 
-/**
- * 同步导入端点（/api/import/document，Studio 与旧拖放都在用）跟异步队列共享
- * 同一份并发预算：它同样会拉起 pdfjs 解析和 PyMuPDF 子进程，不能绕过闸门，
- * 否则 concurrency=1 的小内存机器可以被并发同步请求打爆。
- */
-export function tryAcquireImportSlot(): boolean {
-  cleanupExpiredJobs();
-  if (runningCount >= GLOBAL_CONCURRENCY) return false;
-  runningCount += 1;
-  return true;
-}
-
-export function releaseImportSlot(): void {
-  runningCount = Math.max(0, runningCount - 1);
-  queueMicrotask(pumpQueue);
-}
-
 export const importQueueLimits = {
   concurrency: GLOBAL_CONCURRENCY,
   perOwner: OWNER_ACTIVE_LIMIT,

@@ -4,6 +4,7 @@
  * （拖放错误、OCR 提示都在那里显示）。
  */
 import type { ReactNode } from 'react';
+import { IconAlert } from './icons';
 import AddSourceMenu from './AddSourceMenu';
 import SourceCard from './SourceCard';
 import { IconFile } from './icons';
@@ -21,7 +22,7 @@ export default function SourcesRail({ uploadPanel }: { uploadPanel: ReactNode })
         <AddSourceMenu />
         {storageDegraded && (
           <div className="hh-msg-warn" style={{ fontSize: 12, marginBottom: 8 }}>
-            ⚠ 浏览器存储不可用/已满：材料只保留在本次会话，刷新会丢
+            <IconAlert /> 浏览器存储不可用/已满：材料只保留在本次会话，刷新会丢
           </div>
         )}
         {state.sources.length === 0 ? (
