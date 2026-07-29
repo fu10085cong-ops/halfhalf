@@ -149,12 +149,19 @@ interface SceneRequest {
   subject?: string;       // 用户声明的学科 id：'calculus' | 'os' | 'semiconductor' | 'politics'。
                           // 启用学科层规则（os 表=core → H3 表格保护；politics 顺序弱 → 自动回填）。
                           // 省略 = 只走力学层兜底；传未知 id 返回 400
+  strictSourceOrder?: boolean; // 严格保持原文顺序（关掉 repack 页内换位与跨页回填）。
+                          // 省略 = 跟随材料里的 AI 判定标记（见下）；显式 true/false 覆盖它。
 }
 ```
 
-**严格来源页序**：markdown 里出现 `<!-- halfhalf:source-order=strict -->` 注释时（PDF 导入会自动写入），
+**严格来源页序**：markdown 里出现 `<!-- halfhalf:source-order=strict -->` 注释时，
 拼装层强制单调落位——重排、跨页回填和 `allowReorder` 一律关闭，后面的块不会跳回前面页的列洞。
-导入的 PDF 靠这个保持和原文件一致的页序。
+标记有两个来源：PDF 导入自动写入（保持与原文件一致的页序）；**AI 结构化判定材料
+"先后次序承载信息"时写在输出首行**（编号章节 / 步骤流程推导 / 后文依赖前文）。
+`strictSourceOrder` 字段优先于标记，供用户在界面上覆盖。
+
+代价不是零（12 份固定材料实测，RULES.md §4.12）：逆序对全部归零，页数不变，
+但 10/12 份字号跌 0.5~2pt。所以默认跟随判定而非一律开启。
 
 请求 body 另支持：
 - `marginMm?: number`——四边统一页边距毫米（3~25，省略 = 默认 10；6mm 比默认多约

@@ -92,6 +92,11 @@ export interface GenConfig {
   debug: boolean;
   allowReorder: boolean;
   stretchFill: boolean;
+  /**
+   * 严格保持原文顺序。null = 跟随 AI 判断（structurize 写在材料首行的
+   * source-order 标记），true/false = 用户显式覆盖。
+   */
+  strictSourceOrder: boolean | null;
 }
 
 /** 会话生成历史一行（历史面板；改一个参数再生成即可对照） */
@@ -257,6 +262,7 @@ const INITIAL_CONFIG: GenConfig = {
   debug: false,
   allowReorder: false,
   stretchFill: true,
+  strictSourceOrder: null,
 };
 
 export function StudioProvider({ children }: { children: ReactNode }) {

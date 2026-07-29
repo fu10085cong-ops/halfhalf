@@ -18,6 +18,7 @@ import { renderGridPdf, resolveGrid, searchGridFontSize } from '../engine/grid-l
 import { PX_PER_MM } from '../engine/measure-blocks.js';
 import { searchAdjudicated } from '../engine/adjudicate.js';
 import { precheckFormulas } from '../engine/precheck-formulas.js';
+import { hasStrictSourceOrder } from '../engine/ai-structurize.js';
 import { derivePdfName } from '../engine/pdf-name.js';
 import { saveJob } from '../engine/job-store.js';
 
@@ -37,6 +38,16 @@ interface SceneRequest {
    * 默认 false（力学层保守假定顺序刚性强）。
    */
   allowReorder?: boolean;
+  /**
+   * 严格保持原文顺序：关掉 repack 页内换位与跨页回填，块严格按源序左→右、上→下排。
+   *
+   * 省略 = **跟随 AI 判断**（structurize 在材料首行写的 `halfhalf:source-order=strict`
+   * 标记，见 ai-structurize 第 7 条规则）；显式给 true/false 则覆盖它，供用户在界面上翻。
+   *
+   * 代价不是零：12 份固定材料实测（2026-07-30），开启后阅读顺序逆序对全部归零，
+   * 但 10/12 份字号跌 0.5~2pt（页数不变）。所以它是**选择**而非默认。
+   */
+  strictSourceOrder?: boolean;
   /**
    * 用户声明的学科 id（SUBJECT_RULES 的键，如 'calculus' / 'politics'）——学科层补充
    * 特征的来源：顺序刚性（politics 弱 → 自动开回填）、原子角色（os 表核心 → H3 生效）。
@@ -102,7 +113,9 @@ sceneRouter.post('/scene', async (req: Request, res: Response) => {
   try {
     const blocks = chunkMarkdown(body.markdown);
     const stats = analyzeContent(blocks);
-    const strictSourceOrder = /<!--\s*halfhalf:source-order=strict\s*-->/.test(body.markdown);
+    // 顺序刚性:AI 结构化时判定并写进材料首行(见 ai-structurize 第 7 条规则),
+    // 用户可在「高级选项」里显式覆盖。多份材料拼接时任一份带标记即整体保序。
+    const strictSourceOrder = body.strictSourceOrder ?? hasStrictSourceOrder(body.markdown);
     const subject = body.subject ? SUBJECT_RULES[body.subject] : undefined;
     const staticDerived = deriveLayoutParams(stats, {
       allowReorder: !strictSourceOrder && body.allowReorder === true,

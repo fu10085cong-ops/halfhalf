@@ -126,6 +126,9 @@ export async function markdownToHtml(
     return self.renderToken(tokens, idx, mdOptions);
   };
 
-  const html = md.render(markdown);
+  // HTML 注释是 FORMAT.md §6 的内部方言（如 halfhalf:source-order=strict），
+  // 按约定「引擎全链路无视」。切块器早就剥了，这里补上：`html:false` 会把它**转义成
+  // 可见文字**（`&lt;!-- … --&gt;` 单独成段），任何不经切块直接渲染整篇的路径都会露馅。
+  const html = md.render(markdown.replace(/<!--[\s\S]*?-->/g, ''));
   return { html, hasMermaidBlocks: mermaidIndex > 0 };
 }

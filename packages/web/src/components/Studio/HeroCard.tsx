@@ -155,6 +155,22 @@ export default function HeroCard() {
             <option value={4}>极窄 4mm（看打印机）</option>
           </select>
         </label>
+        <label title="编号章节、步骤、推导这类材料顺序乱了就没法查；默认由 AI 在转换材料时判定。强制保序会让字号小 0.5~2pt（页数不变）">
+          阅读顺序
+          <select
+            value={cfg.strictSourceOrder === null ? 'auto' : cfg.strictSourceOrder ? 'strict' : 'free'}
+            onChange={(e) =>
+              set({
+                strictSourceOrder:
+                  e.target.value === 'auto' ? null : e.target.value === 'strict',
+              })
+            }
+          >
+            <option value="auto">跟随 AI 判断</option>
+            <option value="strict">严格按原文顺序</option>
+            <option value="free">可为版面调整</option>
+          </select>
+        </label>
         <label title="要点式材料顺序打乱几乎无代价，允许后面的内容填进前面页的空隙；推导/代码类不建议">
           <input
             type="checkbox"

@@ -269,6 +269,8 @@ export function useStudioActions() {
           subject: cfg.subject || undefined,
           marginMm: cfg.marginMm,
           stretchFill: cfg.stretchFill,
+          // null = 不传，让后端跟随材料里的 AI 判定标记
+          ...(cfg.strictSourceOrder === null ? {} : { strictSourceOrder: cfg.strictSourceOrder }),
         }),
       });
       const data = await resp.json();
@@ -298,6 +300,7 @@ export function useStudioActions() {
             `目标${cfg.targetPages}页`,
             cfg.orientation === 'landscape' ? '横' : '竖',
             cfg.allowReorder ? '乱序' : null,
+            cfg.strictSourceOrder === true ? '强制保序' : cfg.strictSourceOrder === false ? '强制不保序' : null,
             cfg.marginMm !== 10 ? `边距${cfg.marginMm}mm` : null,
             !cfg.stretchFill ? '不伸展' : null,
             `${enabledCount}份材料`,

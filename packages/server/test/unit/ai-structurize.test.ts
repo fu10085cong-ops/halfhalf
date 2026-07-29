@@ -5,11 +5,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  STRICT_ORDER_MARK,
+  STRUCTURIZE_SYSTEM_PROMPT,
   checkStructure,
+  hasStrictSourceOrder,
   stripOuterFence,
   structurize,
   type StreamFn,
 } from '../../src/engine/ai-structurize.js';
+import { chunkMarkdown } from '../../src/engine/chunk-markdown.js';
+import { markdownToHtml } from '../../src/engine/md-to-html.js';
 import type { ChatMessage } from '../../src/engine/ai-provider.js';
 
 const GOOD_MD = `# 数据分析基础
@@ -222,4 +227,38 @@ test('checkStructure: Pandoc 伪表格分隔行被抓(真材料 db-systems 判�
   const fenced = '# 代码\n\n## 示例\n\n```text\n------ ------\n```\n正文。';
   const code = await checkStructure(fenced);
   assert.ok(!code.problems.some((p) => p.includes('伪表格')), '围栏内横线是代码内容');
+});
+
+/**
+ * 严格源序标记（2026-07-30 判例）：用户的「一~十四 考点全集」第一页顺序被打乱——
+ * repack 页内换位在装不下时会掉到高度序。实测 12 份固定材料，第 1 页普遍有逆序
+ * （poli-econ 184 对、java-oop 49 对），一直存在只是从没量过。
+ *
+ * 定案是让 structurize 判定顺序刚性、写进材料首行，用户可覆盖。这几条锁住这条链路：
+ * 判据必须在提示词里、标记形态不许漂、检测函数两侧都对。
+ */
+test('系统提示词写死了顺序判据与标记原文', () => {
+  assert.match(STRUCTURIZE_SYSTEM_PROMPT, /halfhalf:source-order=strict/, '标记原文必须给全');
+  assert.match(STRUCTURIZE_SYSTEM_PROMPT, /编号/, '要给具体信号,不能只说"有没有顺序"');
+  assert.match(STRUCTURIZE_SYSTEM_PROMPT, /步骤|流程|推导/);
+  assert.match(STRUCTURIZE_SYSTEM_PROMPT, /拿不准就不写/, '要给出不确定时的偏向');
+});
+
+test('标记常量与检测正则同源——两边不许各写一份', () => {
+  assert.ok(hasStrictSourceOrder(STRICT_ORDER_MARK), '常量自己必须被自己的正则认出');
+});
+
+test('hasStrictSourceOrder 两侧都对', () => {
+  assert.equal(hasStrictSourceOrder(`${STRICT_ORDER_MARK}\n\n# 标题\n\n正文。`), true);
+  assert.equal(hasStrictSourceOrder('<!--  halfhalf:source-order=strict  -->'), true, '容空格');
+  assert.equal(hasStrictSourceOrder('# 标题\n\n正文。'), false);
+  assert.equal(hasStrictSourceOrder('正文里提到 source-order 这个词'), false, '散文提及不算');
+});
+
+test('顺序标记不进块、也不渲染成可见文字', async () => {
+  const md = `${STRICT_ORDER_MARK}\n\n# 标题\n\n一段正文。`;
+  const blocks = chunkMarkdown(md);
+  assert.ok(!blocks.some((b) => /source-order/.test(b.markdown)), '切块器必须剥掉');
+  const { html } = await markdownToHtml(md);
+  assert.doesNotMatch(html, /source-order/, 'html:false 会把注释转义成可见文字,必须先剥');
 });
