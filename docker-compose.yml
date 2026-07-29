@@ -7,7 +7,9 @@ services:
     image: halfhalf:latest
     build: .                    # 服务器上部署时删掉这行，改用已推送的镜像
     ports:
-      - "80:3000"               # 对外 80 → 容器内 3000；需要 HTTPS 就在前面挂 Caddy 反代
+      # 默认只绑回环地址，让同机 Caddy 反代提供 HTTPS——未加 HTTPS 就绑 0.0.0.0 等于把
+      # 用户材料和 BYOK key 明文晾在公网上。确认要直接暴露时设 HALFHALF_BIND_ADDRESS=0.0.0.0。
+      - "${HALFHALF_BIND_ADDRESS:-127.0.0.1}:80:3000"
     environment:
       HALFHALF_MAX_PAGES: "1"
       HALFHALF_CHROMIUM_NO_SANDBOX: "1"
@@ -19,7 +21,8 @@ services:
       HALFHALF_IMPORT_JOB_TTL_MS: "604800000"   # 7 天后清掉终态任务及其结果文件
       HALFHALF_DATA_DIR: "/app/data"
       # 口令与 AI key 这类秘密放 .env（同目录，git 忽略；模板见 .env.example）
-      HALFHALF_ACCESS_CODE: "${HALFHALF_ACCESS_CODE:-}"
+      # 口令缺失时 compose 直接拒绝启动——没有它这就是一个开放 API，任何人都能烧你的 key。
+      HALFHALF_ACCESS_CODE: "${HALFHALF_ACCESS_CODE:?请先在 .env 设置 HALFHALF_ACCESS_CODE}"
       HALFHALF_AI_ENDPOINT: "${HALFHALF_AI_ENDPOINT:-}"
       HALFHALF_AI_MODEL: "${HALFHALF_AI_MODEL:-}"
       HALFHALF_AI_KEY: "${HALFHALF_AI_KEY:-}"

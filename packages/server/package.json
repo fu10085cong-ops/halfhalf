@@ -17,7 +17,8 @@
     "bench": "tsx test/run-bench.ts",
     "bench:document": "tsx test/run-document-bench.ts",
     "bench:research": "tsx test/run-research-bench.ts",
-    "eval": "tsx test/run-eval.ts"
+    "eval": "tsx test/run-eval.ts",
+    "qc:render": "tsx test/run-render-qc.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

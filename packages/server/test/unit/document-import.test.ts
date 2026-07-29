@@ -6,6 +6,7 @@ import {
   countDocumentCharacters,
   importDocx,
   importTextPdf,
+  orderPdfBlocksForReading,
   selectPdfVisualPages,
 } from '../../src/engine/document-import.js';
 
@@ -86,4 +87,60 @@ test('small mixed documents do not overreact to one or two visual pages', () => 
     { page: 3, route: 'ocr' as const },
   ];
   assert.deepEqual(selectPdfVisualPages(pages, 3), [2, 3]);
+});
+
+/**
+ * 双栏阅读顺序（2026-07-29 从 feat/document-intelligence-complete 捞回）。
+ * 两侧都要锁：双栏要还原，**单栏更要不被打乱**——这个机制的风险全在误判上。
+ */
+const blk = (id: string, x: number, y: number, w = 0.25) => ({
+  id,
+  page: 1,
+  text: id,
+  bbox: [x, y, x + w, y + 0.04] as [number, number, number, number],
+  fontHeight: 10,
+});
+
+test('双栏讲义：左栏读完再读右栏', () => {
+  const ordered = orderPdfBlocksForReading([
+    blk('右上', 0.62, 0.2),
+    blk('左下', 0.1, 0.5),
+    blk('右下', 0.62, 0.5),
+    blk('左上', 0.1, 0.2),
+  ]);
+  assert.deepEqual(ordered.map((b) => b.id), ['左上', '左下', '右上', '右下']);
+});
+
+test('单栏文档顺序原样保持——几何有歧义时绝不重排', () => {
+  const ordered = orderPdfBlocksForReading([
+    blk('三', 0.1, 0.6),
+    blk('一', 0.1, 0.2),
+    blk('二', 0.1, 0.4),
+  ]);
+  assert.deepEqual(ordered.map((b) => b.id), ['一', '二', '三']);
+});
+
+test('居中公式不够两栏，按上下读', () => {
+  const ordered = orderPdfBlocksForReading([
+    blk('正文左', 0.1, 0.2),
+    blk('居中公式', 0.38, 0.35),
+    blk('正文右', 0.62, 0.2),
+  ]);
+  assert.deepEqual(ordered.map((b) => b.id), ['正文左', '正文右', '居中公式']);
+});
+
+test('通栏标题当分隔符，前后两段各自判栏', () => {
+  const ordered = orderPdfBlocksForReading([
+    blk('段一左上', 0.1, 0.1),
+    blk('段一右上', 0.62, 0.1),
+    blk('段一左下', 0.1, 0.2),
+    blk('段一右下', 0.62, 0.2),
+    blk('通栏标题', 0.08, 0.4, 0.84),
+    blk('段二左', 0.1, 0.5),
+    blk('段二右', 0.62, 0.5),
+  ]);
+  assert.deepEqual(
+    ordered.map((b) => b.id),
+    ['段一左上', '段一左下', '段一右上', '段一右下', '通栏标题', '段二左', '段二右']
+  );
 });

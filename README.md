@@ -92,6 +92,7 @@ npx tsx test/run-scene.ts poli-econ.md 2 text-cram   # 强制指定场景(模拟
 npx tsx test/run-ab.ts poli-econ.md 2        # 拼装变体 A/B:字号/页数/逐页填充率对照
 npx tsx test/run-grid.ts os-large.md 2       # 网格引擎单跑
 pnpm bench                                   # 性能基线对账(bench-baseline.json)
+pnpm qc:render [fixture.md]                  # 栅格质检成品 PDF:空白页/贴边(门禁型)
 ```
 
 材料在 `test/fixtures/`(覆盖代码高亮、公式、Mermaid、长表格、图片等画像),

@@ -278,6 +278,55 @@ function escapePdfMarkdown(line: string): string {
   return line;
 }
 
+/** 同一栏内：先上后下，同高再左右。0.004 是容差，避免同一行的微小基线差把顺序抖乱。 */
+function sortTopThenLeft(a: NativeSourceBlock, b: NativeSourceBlock): number {
+  const dy = a.bbox[1] - b.bbox[1];
+  return Math.abs(dy) > 0.004 ? dy : a.bbox[0] - b.bbox[0];
+}
+
+/**
+ * 只在几何毫无歧义时才认双栏：左右各至少 2 块、且这一段里每块都明确属于某一栏。
+ * 居中的公式、图注、窄的单栏正文都不满足，照常按上下顺序读——
+ * 宁可不改顺序，也不能把单栏文档打乱。
+ */
+function orderColumnSegment(blocks: NativeSourceBlock[]): NativeSourceBlock[] {
+  const center = (b: NativeSourceBlock) => (b.bbox[0] + b.bbox[2]) / 2;
+  const left = blocks.filter((b) => center(b) < 0.47);
+  const right = blocks.filter((b) => center(b) > 0.53);
+  if (left.length >= 2 && right.length >= 2 && left.length + right.length === blocks.length) {
+    return [...left.sort(sortTopThenLeft), ...right.sort(sortTopThenLeft)];
+  }
+  return [...blocks].sort(sortTopThenLeft);
+}
+
+/**
+ * 还原双栏讲义 PDF 的阅读顺序。pdf.js 按绘制顺序吐文字项，双栏排版下抽出来常是
+ * 左一段右一段交错——直接拼成 Markdown 就是串行的乱码句子。
+ *
+ * 做法：宽度 ≥ 62% 页宽的块（通栏标题、跨栏图表）当分隔符，把页面切成若干段，
+ * 每段内部单独判断是不是双栏。这样"通栏标题 → 双栏正文 → 通栏图 → 双栏正文"
+ * 这种常见结构能逐段还原，而通栏元素本身留在原位。
+ * （2026-07-29 从 feat/document-intelligence-complete 分支捞回）
+ */
+export function orderPdfBlocksForReading(blocks: NativeSourceBlock[]): NativeSourceBlock[] {
+  const result: NativeSourceBlock[] = [];
+  let segment: NativeSourceBlock[] = [];
+  const flush = () => {
+    if (segment.length > 0) result.push(...orderColumnSegment(segment));
+    segment = [];
+  };
+  for (const block of [...blocks].sort(sortTopThenLeft)) {
+    if (block.bbox[2] - block.bbox[0] >= 0.62) {
+      flush();
+      result.push(block);
+    } else {
+      segment.push(block);
+    }
+  }
+  flush();
+  return result;
+}
+
 /**
  * 通用质量策略：异常页稀疏时只对那几页做原图保真，其余保持可编辑；
  * 异常页密集时整篇切视觉模式，避免巨大原生文字和幻灯片图混排。
@@ -320,8 +369,8 @@ async function importPdfDocumentWithVisuals(
       return items;
     }, []);
     const viewport = page.getViewport({ scale: 1 });
-    const pageBlocks = coalesceNativeBlocks(
-      extractPdfBlocks(textItems, pageNumber, viewport.width, viewport.height)
+    const pageBlocks = orderPdfBlocksForReading(
+      coalesceNativeBlocks(extractPdfBlocks(textItems, pageNumber, viewport.width, viewport.height))
     );
     blocksByPage.set(pageNumber, pageBlocks);
     sourceBlocks.push(...pageBlocks);

@@ -77,7 +77,7 @@
 | ③ AI 对话 | **无（有意）——闸在下游** | `ai-chat.test.ts` | 不单独评（见下） |
 | ④ 文档导入 | 错误码 + 路由判据 + 空成功拒绝 | `document-import.test.ts` + `knowledge-ir.test.ts` | `pnpm bench:document`（门禁型） |
 | ⑤ 重点规划 | `validateDocument` / `validateInputs` + fileHash | `restructure-*.test.ts` | 不需要（纯确定性算子） |
-| ⑥ 排版 | `isAcceptableTrial` + 超高/cramped 显式上报 | 6 份，含 60 组随机压测不变量 | `pnpm bench`（对账型） |
+| ⑥ 排版 | `isAcceptableTrial` + 超高/cramped 显式上报 | 6 份，含 60 组随机压测不变量 | `pnpm bench`（对账型）+ `pnpm qc:render`（门禁型） |
 
 **③ 对话为什么没有产出闸**：它的产物进生产链路时必过**统一输入闸**——「存为新材料」「写回」
 都会跑一遍 structurize（见 [统一输入闸设计](./docs/superpowers/specs/2026-07-28-unified-input-gate-design.md)）。
@@ -95,7 +95,7 @@
 
 | 强度 | 含义 | exit code | 现有脚本 |
 |---|---|---|---|
-| **门禁型** | 绝对阈值，破线即失败 | 破线 → 1 | `pnpm test`、`pnpm bench:document`（7 条 gate） |
+| **门禁型** | 绝对阈值，破线即失败 | 破线 → 1 | `pnpm test`、`pnpm bench:document`（7 条 gate）、`pnpm qc:render` |
 | **对账型** | 与冻结基线逐项 diff，由人裁决 | 恒 0（除非崩溃） | `pnpm bench`、`pnpm eval` |
 | **观察型** | 只打印供人看，无判据 | 恒 0 | `pnpm bench:research` |
 
@@ -136,8 +136,19 @@
 
 ## 5. 现状与缺口台账
 
-**已达标**：七个环节 L1 全部就位（③ 按设计豁免），L2 全部就位（173 个单测），
+**已达标**：七个环节 L1 全部就位（③ 按设计豁免），L2 全部就位（183 个单测），
 L3 覆盖 ⓪①（9 份合成材料 ✳️，112 个锚点），②④⑥ 有各自形态的跑分器。
+
+**第二轮发现（2026-07-29，分支收编，详见 RULES.md §4.10）**：
+
+- **① 精简的 `formulaClean` 安全网有假阴性（已修）**：它借道 markdown-it-katex 的
+  红字降级判定公式合法性，而**未知命令**不打 `katex-error` 类——AI 编造一个不存在的
+  宏时闸会放行。这正是本标准 §0 说的"L1 闸本身写错，L2 抓不到"：假 AI 单测里
+  `formulaLeakFake` 注的是 `$\frac{a}$`（老实现能抓的那一类），六个月都不会暴露另一类。
+  新加的 `precheck-formulas.test.ts` 直接锁判据本身，不再只锁闸的调用行为。
+  **下次 `pnpm eval` 若见精简采纳率下降，先按此归因**——闸变严了不是产出变差。
+- **⑥ 排版新增 `pnpm qc:render`（门禁型）**：栅格化成品 PDF 查空白页与贴边，
+  补上 `isAcceptableTrial` 的纯几何盲区。6 份 fixture 零误报，故可当硬门禁。
 
 **首轮评测（2026-07-29，glm-4-flash）的发现**：
 

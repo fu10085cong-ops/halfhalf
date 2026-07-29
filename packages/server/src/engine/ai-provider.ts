@@ -20,7 +20,10 @@ export const ALLOWED_HOSTS = new Set([
   'api.deepseek.com',
   'dashscope.aliyuncs.com',
   'open.bigmodel.cn',
+  // MiniMax 国内与国际两个端点都在服务（2026-07-29 实测均返回 401 而非无法连接），
+  // 用户拿哪个 key 就该能填哪个域名，两个都放行。
   'api.minimaxi.com',
+  'api.minimax.io',
 ]);
 
 /**

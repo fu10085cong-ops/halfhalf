@@ -1,13 +1,13 @@
 import { execFile } from 'node:child_process';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { pythonCandidates } from './python-worker.js';
 
 const execFileAsync = promisify(execFile);
 const WORKER_PATH = fileURLToPath(new URL('../workers/render_pdf.py', import.meta.url));
-const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
 export interface PdfVisualRequest {
   id: string;
@@ -43,29 +43,6 @@ export class PdfVisualRendererError extends Error {
     super(message);
     this.name = 'PdfVisualRendererError';
   }
-}
-
-async function existingExecutable(candidate: string): Promise<string | null> {
-  if (candidate === 'python' || candidate === 'python3') return candidate;
-  try {
-    await access(candidate);
-    return candidate;
-  } catch {
-    return null;
-  }
-}
-
-async function pythonCandidates(): Promise<string[]> {
-  const configured = process.env.HALFHALF_PYTHON?.trim();
-  const raw = [
-    configured,
-    path.join(REPO_ROOT, '.venv-parser', 'Scripts', 'python.exe'),
-    path.join(REPO_ROOT, '.venv-parser', 'bin', 'python'),
-    'python3',
-    'python',
-  ].filter((candidate): candidate is string => Boolean(candidate));
-  const resolved = await Promise.all(raw.map(existingExecutable));
-  return [...new Set(resolved.filter((candidate): candidate is string => Boolean(candidate)))];
 }
 
 async function runWorker(

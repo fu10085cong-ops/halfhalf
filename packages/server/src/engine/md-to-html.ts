@@ -9,7 +9,7 @@ import path from 'node:path';
  * KaTeX 原生不支持部分物理常用宏（矢量、微分算符、单位），
  * 这里补一批常用宏，覆盖不到的语法会按普通 LaTeX 渲染或报错降级。
  */
-const PHYSICS_MACROS: Record<string, string> = {
+export const PHYSICS_MACROS: Record<string, string> = {
   '\\vec': '\\boldsymbol{#1}',
   '\\dv': '\\frac{d#1}{d#2}',
   '\\pdv': '\\frac{\\partial#1}{\\partial#2}',

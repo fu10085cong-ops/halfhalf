@@ -646,3 +646,69 @@ stretchCapPt/stretchLastCapPt（数值挡位）。
 
 至此 §4.9 消融+校准全部收官：7 机制保留、2 死参拆除、5 组场景值维持现值,
 全部有对照数据背书。唯余 monotonicOrder 挂账（等严格源序判例）。
+
+### 4.10 分支收编：从 `feat/document-intelligence-complete` 捞回的缺陷修复（2026-07-29）
+
+远程分支清理时对 6 个陈旧分支逐一验证内容，其中 5 个已完全并入 main 或只剩与
+现行规则打架的旧文档，直接删除；`feat/document-intelligence-complete`
+（1607 行 / 42 文件、落后 main 24 提交）逐项判定后**只捞五条自带边界的缺陷修复**，
+其余作废或挂账。删除前的分支 SHA 全部记在提交信息里，可随时推回。
+
+**捞回并落码：**
+
+1. **公式预检有假阴性（真缺陷，已修 + 回归锁）**。老实现渲染一遍 HTML 再扫
+   `<span class="katex-error">` 判定公式合法性，而 markdown-it-katex 对
+   **未知命令**（`$\foobarbaz{x}$`）不打这个类——闸判"干净"放行。它正是
+   `ai-compress` 的 `formulaClean` 安全网的唯一依据，而编造不存在的宏恰恰是
+   AI 改写最常见的错法。9 用例对照：老实现 4/5，新实现（直接 `throwOnError:true`
+   调 KaTeX）5/5 抓到、4/4 正常公式不误报，21 份 fixture 零误报。
+   锁在 `test/unit/precheck-formulas.test.ts`。
+   附带发现：**渲染侧本来就是红字显示的**（`color:#cc0000`），只是没带
+   `katex-error` 类——瞎的是闸不是画面，因此渲染管线不动。
+2. **双栏 PDF 阅读顺序**（`orderPdfBlocksForReading`）。pdf.js 按绘制顺序吐文字项，
+   双栏讲义抽出来左右交错，拼成 Markdown 就是串行乱码。修法保守：宽度 ≥62% 页宽的
+   块当分隔符切段，段内左右各 ≥2 块且全部明确归栏时才认双栏，否则一律上下顺序。
+   四条锁**两侧都锁**——双栏要还原，单栏更要不被打乱（这个机制的风险全在误判上）。
+3. **栅格质检**（`pdf-visual-qc.ts` + `inspect_pdf.py` + `pnpm qc:render`，门禁型）。
+   把成品 PDF 真栅格化，查几何算不出来的两类失败：整页几乎空白、墨迹贴物理边缘。
+   只依赖已有的 PyMuPDF。6 份 fixture 全过零误报，故可当硬门禁。
+   **不接进 `/api/scene`**（见下方挂账⑦）。
+4. **KaTeX 现代命令回归锁**（`md-to-html.test.ts`）。`PHYSICS_MACROS` 把 `\vec`
+   展开成 `\boldsymbol`，依赖版本一旦退回老 KaTeX 会整片渲染成红色源码，
+   而页数和几何完全看不出来。
+5. **两条部署加固**：compose 端口从 `"80:3000"`（绑 0.0.0.0，明文服务直接暴露公网）
+   改为默认绑 `127.0.0.1` 由 Caddy 反代；`HALFHALF_ACCESS_CODE` 从 `:-`（缺省空）
+   改为 `:?`（缺失则 compose 拒绝启动），避免意外成为开放 API。
+
+顺带把两个 Python Worker 各写一份的解释器探测抽成 `python-worker.ts`（净减重复）。
+
+**判定为不捞（记在这里，免得下次再翻一遍）：**
+
+- **模型预设升级**（默认改 `deepseek-v4-flash`/`glm-5.2`/`gpt-5-mini` 等）：型号名无法
+  验证，且 L3 基线是拿 `glm-4-flash` 跑的，换默认模型等于作废基线。要动须按
+  TESTING.md §4：改动 + `pnpm eval` 对照 + 基线更新同一提交。
+  其附带的 `models: readonly string[]`（前端只给选不给手填）是好设计，可单独抄。
+- **白名单主机名"修正"**：分支把 `api.minimaxi.com` 换成 `api.minimax.io`。实测
+  **两个域名都活着**（均返回 401 而非连不上），是国内/国际两个端点，不是换域名。
+  故改为**两个都放行**，默认预设不动。（此处推翻了本人先前"旧域名已失效"的判断——
+  那是从 diff 推断的，没验。）
+- **前端约 700 行**：加的「取消生成」「AI 耗时」「材料容量提示」在 main 上已由
+  另一套做法覆盖（`chatAbort`/`convertAbort`，且区分手动停止与 501 未配置）。
+  分支落后 24 提交，合进来会撞坏统一输入闸。
+- **OCR 全家桶**：`pdf-ocr` 要往镜像塞 tesseract + 中文包，且 main 对扫描件已有
+  保真页豁免这条路——是换路线不是补缺；`formula-ocr` 硬编码 `D:\anaconda`，不可移植；
+  `restructure-materializer` 的"OCR 文本下留原图当证据"依赖 OCR 才有意义。整组挂起。
+- **`REVIEW_REPORT` / `DEMO_V1` / `RESTRUCTURE_V1`**：写于 main 更新前的审计快照，
+  多条产品规则已与现行规则冲突（写着「AI 是可选增强，不是主链路依赖」，而 main 现在是
+  统一输入闸；写着扫描 PDF 返回 `OCR_REQUIRED`，而 main 走保真页豁免）。搬过去会污染
+  RULES.md/FORMAT.md 的权威性。报告本身也自陈「`feat/web-research` 比本次 main 新，
+  不能计入」——它盘的不是当前主线。
+
+**挂账（想法对，但得按规矩验）：**
+
+- ⑥ **标题最小跨栏**（`measure-blocks.ts`）：H1 至少占 2/3 宽、H2 至少 1/3 宽，
+  防标题被塞进最窄卡竖成竹竿。是排版机制改动，须走 EXPERIMENT.md 的单变量 A/B
+  + `pnpm bench` 对账才能进。
+- ⑦ **`visualChecks` 导出门禁**（`routes/scene.ts`）：把页数超标/截断/欠缩放/栅格问题/
+  填充率聚成一个 `passed` + `issues` 上报前端。方向对，但它把"填充率 <35% 算问题"
+  写死，而 §4.9 消融战役对填充率语义已有自己的结论，直接合会打架。要合先对齐口径。
