@@ -1,5 +1,7 @@
 /**
- * 联网补洞的真实基准。不进 CI（要 key、结果不稳定），供人工判断质量。
+ * 联网补洞的真实基准。**观察型**（强度定义见仓库根 TESTING.md §3）：只打印供人看，
+ * 无 pass/fail 判据、无基线对账——产出取决于当次搜到什么，精确对账必漂。
+ * 不进 CI（要 key、结果不稳定）。立判据的思路见 TESTING.md §5 缺口。
  *
  *   HALFHALF_SEARCH_KEY=... HALFHALF_AI_* =... pnpm bench:research -- "戴维南定理 适用条件"
  *

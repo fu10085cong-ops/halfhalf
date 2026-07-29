@@ -151,6 +151,7 @@ Word / 文字 PDF / 网页 / 图片导入;PDF 逐页质量路由(坏字体页回
 | [`DESIGN.md`](./DESIGN.md) | 分层架构(⓪结构化 → ①压缩 → ②自动排版 → ③手动微调)与设计意图 |
 | [`RULES.md`](./RULES.md) | **排版决策规则**:力学层通用兜底 + 学科层护城河;判例表、证据等级、缺陷台账 |
 | [`EXPERIMENT.md`](./EXPERIMENT.md) | **改引擎的实验流程**:五步循环、归因对照、真材料动线、十分钟北极星演练 |
+| [`TESTING.md`](./TESTING.md) | **各产出环节的测试标准**:三层(产出闸/行为锁/质量评测)、门禁强度、锚点评测口径 |
 | [`PRODUCT.md`](./PRODUCT.md) | 产品定位、竞争分析、护城河、增长策略 |
 | [`CHANGELOG.md`](./CHANGELOG.md) | 已完成工作的完整经过(判例、数字、踩过的坑) |
 | [`packages/server/API.md`](./packages/server/API.md) | **接口契约权威参考**(请求/响应字段、错误码、SSE 事件) |
@@ -196,7 +197,7 @@ halfhalf/
 │       └── src/components/
 │           └── Studio/               # 三栏工作台(唯一界面)
 ├── Dockerfile / docker-compose.yml / .env.example
-└── DESIGN.md / RULES.md / EXPERIMENT.md / PRODUCT.md / CHANGELOG.md / DEPLOY.md
+└── DESIGN.md / RULES.md / EXPERIMENT.md / TESTING.md / PRODUCT.md / CHANGELOG.md / DEPLOY.md
 ```
 
 ---

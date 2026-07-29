@@ -5,7 +5,7 @@
  *
  * 遮罩顺序（从"最不透明"到"最透明"，先摘掉的会吞掉后面模式会误扫的 $/|/![ 等符号）：
  *   ① 围栏代码块 → ② 行内代码 `..` → ③ 独立公式 $$..$$ → ④ 表格 → ⑤ 图片
- *   → ⑥ 行内公式 $..$ → ⑦ 标题行
+ *   → ⑥ 行内公式 $..$ → ⑦ 标题行（可关，见 maskHeadings）
  *
  * 哨兵用全角龟甲括号 〔HH数字〕：学习笔记里几乎不会出现，且对 markdown-it/KaTeX/Shiki
  * 都是普通文本；能过 JSON 往返，配合 prompt 也能被 LLM 逐字保留。万一模型弄丢/改乱，
@@ -22,9 +22,23 @@ const DISPLAY_MATH_RE = /\$\$[\s\S]*?\$\$/g;
 const INLINE_MATH_RE = /\$[^$\n]+\$/g;
 const IMAGE_RE = /!\[[^\]]*\]\([^)]*\)/g;
 const HEADING_RE = /^#{1,6}[ \t].*$/gm;
+/** 同上但不带 g，用于逐次匹配/提取（带 g 的正则 .test/.exec 有 lastIndex 状态） */
+const HEADING_LINE_RE = /^#{1,6}[ \t].*$/;
 
 /** 哨兵匹配：捕获组是原子序号 */
 export const SENTINEL_RE = /〔HH(\d+)〕/g;
+
+export interface MaskOptions {
+  /**
+   * 是否把标题行也遮罩成哨兵，默认 true。
+   *
+   * **精简链路刻意传 false**（2026-07-29 首轮评测判例）：实测弱模型对散落在句子中间的
+   * 哨兵保留得很好（9 个原子丢 0 个），却稳定地把"单独成行、看着像装饰"的标题哨兵
+   * 当噪声删掉——一个哨兵丢失就让整块作废，精简对带标题的块因此恒定失效。
+   * 标题留成自然 Markdown 后模型原样输出，改写风险由 checkHeadingsPreserved 兜底。
+   */
+  maskHeadings?: boolean;
+}
 
 export interface MaskResult {
   /** 遮罩后的文本：刚性原子都变成了 〔HH数字〕，只剩散文 */
@@ -57,7 +71,7 @@ function maskTables(md: string, hold: (s: string) => string): string {
  * 遮罩一段 Markdown，返回散文 + 原子表。同一次调用里原子序号全局递增，
  * 后遮的模式看到的已是前面替换出的哨兵（不含 $/`/| 等），不会二次误扫。
  */
-export function maskAtoms(md: string): MaskResult {
+export function maskAtoms(md: string, opts: MaskOptions = {}): MaskResult {
   const atoms: string[] = [];
   const hold = (s: string) => `〔HH${atoms.push(s) - 1}〕`;
   let out = md;
@@ -67,7 +81,8 @@ export function maskAtoms(md: string): MaskResult {
   out = maskTables(out, hold); // ④ 表格
   out = out.replace(IMAGE_RE, hold); // ⑤ 图片（行内 + 独立）
   out = out.replace(INLINE_MATH_RE, hold); // ⑥ 行内公式：保护其 LaTeX 不被 AI 改动
-  out = out.replace(HEADING_RE, hold); // ⑦ 标题行：结构承重且短，防止 AI 改写标题措辞
+  // ⑦ 标题行：结构承重且短，防止 AI 改写标题措辞（精简链路关掉，见 MaskOptions）
+  if (opts.maskHeadings !== false) out = out.replace(HEADING_RE, hold);
   return { masked: out, atoms };
 }
 
@@ -76,9 +91,30 @@ export function unmaskAtoms(masked: string, atoms: string[]): string {
   return masked.replace(SENTINEL_RE, (_m, i: string) => atoms[Number(i)] ?? '');
 }
 
-/** 遮罩后只剩哨兵和空白 → 这块全是刚性原子（纯公式/代码/表格/图片/标题），没有可精简的正文 */
+/**
+ * 遮罩后只剩哨兵、标题行和空白 → 这块全是刚性原子（纯公式/代码/表格/图片/标题），
+ * 没有可精简的正文。标题行单独扣掉是为了兼容 maskHeadings:false 的链路——
+ * 那里标题以自然 Markdown 留着，同样不算"可精简正文"。
+ */
 export function isPureAtom(masked: string): boolean {
-  return masked.replace(SENTINEL_RE, '').trim() === '';
+  return stripProseNoise(masked).trim() === '';
+}
+
+/** 扣掉哨兵与标题行，剩下的才是"真正会被 AI 改写的散文" */
+export function stripProseNoise(masked: string): string {
+  return masked.replace(SENTINEL_RE, '').replace(HEADING_RE, '');
+}
+
+/**
+ * 标题行完整性：改写前后的标题行序列必须逐字一致。
+ * 标题不再遮罩后，这是"AI 没动标题"的唯一判据——与哨兵校验同级的安全网①。
+ */
+export function checkHeadingsPreserved(before: string, after: string): boolean {
+  const pick = (s: string) =>
+    s.split('\n').filter((l) => HEADING_LINE_RE.test(l)).map((l) => l.trim());
+  const a = pick(before);
+  const b = pick(after);
+  return a.length === b.length && a.every((line, i) => line === b[i]);
 }
 
 /**

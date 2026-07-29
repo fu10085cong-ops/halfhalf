@@ -1,0 +1,116 @@
+{
+  "structurize/word-paste-econ.md": {
+    "stage": "structurize",
+    "file": "word-paste-econ.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 40,
+    "gateOk": true,
+    "attempts": 1,
+    "charsIn": 500,
+    "charsOut": 906,
+    "ms": 21687
+  },
+  "structurize/chatlog-network.md": {
+    "stage": "structurize",
+    "file": "chatlog-network.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 25,
+    "gateOk": true,
+    "attempts": 1,
+    "charsIn": 397,
+    "charsOut": 450,
+    "ms": 10704
+  },
+  "structurize/slides-calculus.md": {
+    "stage": "structurize",
+    "file": "slides-calculus.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 0,
+    "gateOk": true,
+    "attempts": 1,
+    "charsIn": 511,
+    "charsOut": 694,
+    "ms": 15802
+  },
+  "structurize/pandoc-db.md": {
+    "stage": "structurize",
+    "file": "pandoc-db.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 100,
+    "gateOk": true,
+    "attempts": 1,
+    "charsIn": 740,
+    "charsOut": 580,
+    "ms": 12385
+  },
+  "structurize/code-python.md": {
+    "stage": "structurize",
+    "file": "code-python.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 0,
+    "gateOk": true,
+    "attempts": 1,
+    "charsIn": 823,
+    "charsOut": 875,
+    "ms": 12532
+  },
+  "structurize/longprose-history.md": {
+    "stage": "structurize",
+    "file": "longprose-history.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 25,
+    "gateOk": true,
+    "attempts": 1,
+    "charsIn": 732,
+    "charsOut": 783,
+    "ms": 30514
+  },
+  "compress/verbose-os.md": {
+    "stage": "compress",
+    "file": "verbose-os.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 100,
+    "gateOk": true,
+    "okBlocks": 2,
+    "totalBlocks": 2,
+    "charsIn": 437,
+    "charsOut": 189,
+    "ms": 5415
+  },
+  "compress/verbose-formula.md": {
+    "stage": "compress",
+    "file": "verbose-formula.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 100,
+    "gateOk": true,
+    "okBlocks": 2,
+    "totalBlocks": 2,
+    "charsIn": 314,
+    "charsOut": 155,
+    "ms": 6568
+  },
+  "compress/verbose-table.md": {
+    "stage": "compress",
+    "file": "verbose-table.md",
+    "anchorRecall": 100,
+    "missed": [],
+    "noiseStripped": 100,
+    "gateOk": false,
+    "okBlocks": 1,
+    "totalBlocks": 2,
+    "charsIn": 388,
+    "charsOut": 205,
+    "problems": [
+      "占位符丢失或错乱，已保留原文（疑似模型改动了公式/代码/表格）"
+    ],
+    "ms": 2055
+  }
+}

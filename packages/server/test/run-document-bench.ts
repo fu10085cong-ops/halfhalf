@@ -1,3 +1,9 @@
+/**
+ * 文档导入基准。**门禁型**（强度定义见仓库根 TESTING.md §3）：7 条绝对阈值 gate，
+ * 任一破线 → exit 1。不与基线快照对账——导入是确定性解析，指标要么达标要么是缺陷。
+ *
+ *   pnpm bench:document -- <path-to-pdf>
+ */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';

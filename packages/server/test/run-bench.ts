@@ -1,5 +1,6 @@
 /**
  * 固定基准跑分器（EXPERIMENT.md「固定基准」节）：一条命令回答"这次改动让引擎变好还是变坏"。
+ * **对账型**（强度定义见仓库根 TESTING.md §3）：与冻结基线逐项 diff，由人裁决，不置 exit code。
  *
  *   npx tsx test/run-bench.ts             # 跑固定套件,与 bench-baseline.json 对照,打印 Δ 表
  *   npx tsx test/run-bench.ts --update    # 接受当前结果为新基线(改完引擎、确认提升后执行)

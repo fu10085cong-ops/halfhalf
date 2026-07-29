@@ -5,7 +5,8 @@
  * diff、用户逐块接受/拒绝后才回写（回写用本模块给出的字符区间 range）。
  *
  * 三道安全网（任一不过就作废该块、保留原文，并给人话原因）：
- *   ① 哨兵完整性——刚性原子占位符逐一回来、不丢/不重/不杜撰（原子没被 AI 动过的判据）
+ *   ① 原子保全——(a) 哨兵逐一回来、不丢/不重/不杜撰；(b) 标题行逐字未变
+ *      （标题不遮罩，见 atom-mask 的 MaskOptions；两者同属"原子没被 AI 动过"的判据）
  *   ② 公式预检——回填后不引入原文没有的 KaTeX 错误（回填相邻处漏个 $ 之类的兜底）
  *   ③ 确实精简——剥后正文字数确有缩减（口径同 analyzeContent），否则不误报为可用建议
  *
@@ -15,7 +16,14 @@ import { chunkMarkdown } from './chunk-markdown.js';
 import type { ContentBlock } from './chunk-markdown.js';
 import { analyzeContent } from './scene-presets.js';
 import { precheckFormulas } from './precheck-formulas.js';
-import { maskAtoms, unmaskAtoms, isPureAtom, checkSentinels, SENTINEL_RE } from './atom-mask.js';
+import {
+  maskAtoms,
+  unmaskAtoms,
+  isPureAtom,
+  checkSentinels,
+  checkHeadingsPreserved,
+  stripProseNoise,
+} from './atom-mask.js';
 import { chatComplete } from './ai-provider.js';
 import type { ChatMessage } from './ai-provider.js';
 import type {
@@ -37,16 +45,21 @@ const SYSTEM_PROMPT = `你是一个中文学习笔记压缩助手。你唯一的
 
 严格规则：
 1. 只压缩叙述性散文：把完整句子改写成短要点（用「- 」列表或分号短句），删掉口语、过渡词、冗余修饰，但保留全部技术含义。
-2. 绝对不要修改、翻译、解释或删除任何形如 〔HH数字〕 的占位符——它代表公式/代码/表格/图片/标题等不可改动的内容。逐字保留每一个占位符，且保持它在文中的相对位置。
-3. 不要新增占位符，不要合并或拆分占位符，不要改动占位符里的数字。
-4. 保持原文语言（中文保持中文），不要翻译。
-5. 只输出改写后的 Markdown 正文，不要用代码块包裹整段输出，不要加任何解释、前言、后记或元评论。
-6. 不要杜撰原文没有的信息；拿不准就保留原文表述。`;
+2. 以 # 开头的标题行**原样逐字保留**（连同 # 的个数），不要改写措辞、不要删除、不要调整层级。它是文档的结构骨架。
+3. 绝对不要修改、翻译、解释或删除任何形如 〔HH数字〕 的占位符——它代表公式/代码/表格/图片等不可改动的内容。逐字保留每一个占位符，且保持它在文中的相对位置。
+4. 不要新增占位符，不要合并或拆分占位符，不要改动占位符里的数字。
+5. 保持原文语言（中文保持中文），不要翻译。
+6. 只输出改写后的 Markdown 正文，不要用代码块包裹整段输出，不要加任何解释、前言、后记或元评论。
+7. 不要杜撰原文没有的信息；拿不准就保留原文表述。`;
 
-function buildUserPrompt(blockTitle: string, maskedBody: string): string {
-  const titleLine = blockTitle
-    ? `章节标题（仅供你理解上下文，不要输出，也不要改写）：${blockTitle}\n\n`
-    : '';
+/**
+ * 用户提示词。原先这里写「章节标题…**不要输出**」，而当时标题被遮罩成正文首行的
+ * 〔HH0〕——两句话直接打架，模型照"不要输出"把哨兵删了（2026-07-29 首轮评测判例）。
+ * 现在标题以自然 Markdown 留在正文里（见 MaskOptions.maskHeadings），标题行由
+ * system prompt 第 2 条约束、checkHeadingsPreserved 兜底，这里不再单独交代标题。
+ */
+export function buildUserPrompt(blockTitle: string, maskedBody: string): string {
+  const titleLine = blockTitle ? `本段所属章节：${blockTitle}（仅供理解上下文）\n\n` : '';
   return `${titleLine}请压缩下面这段内容：\n\n${maskedBody}`;
 }
 
@@ -137,11 +150,12 @@ async function compressBlock(
     return { suggested: original, charsBefore, charsAfter: charsBefore, skipped: true, safety: skipped('图片块，无正文可精简') };
   }
 
-  const { masked, atoms } = maskAtoms(original);
+  // 标题不遮罩：弱模型会把单独成行的标题哨兵当装饰删掉（见 MaskOptions.maskHeadings）
+  const { masked, atoms } = maskAtoms(original, { maskHeadings: false });
   if (isPureAtom(masked)) {
     return { suggested: original, charsBefore, charsAfter: charsBefore, skipped: true, safety: skipped('纯原子块（公式/代码/表格/标题），无可精简正文') };
   }
-  const proseChars = masked.replace(SENTINEL_RE, '').replace(/\s/g, '').length;
+  const proseChars = stripProseNoise(masked).replace(/\s/g, '').length;
   if (proseChars < MIN_PROSE_CHARS) {
     return { suggested: original, charsBefore, charsAfter: charsBefore, skipped: true, safety: skipped('正文过短，无需精简') };
   }
@@ -167,6 +181,11 @@ async function compressBlock(
   // 安全网①：哨兵完整性——原子有没有被 AI 动过
   if (!checkSentinels(suggestedMasked, atoms.length)) {
     return { suggested: original, charsBefore, charsAfter: charsBefore, skipped: false, safety: { ok: false, atomsPreserved: false, formulaClean: true, reason: '占位符丢失或错乱，已保留原文（疑似模型改动了公式/代码/表格）' } };
+  }
+
+  // 安全网①之二：标题不再遮罩后，"AI 没动标题"要单独验（同属原子保全）
+  if (!checkHeadingsPreserved(original, suggestedMasked)) {
+    return { suggested: original, charsBefore, charsAfter: charsBefore, skipped: false, safety: { ok: false, atomsPreserved: false, formulaClean: true, reason: '标题被改写或丢失，已保留原文' } };
   }
 
   const suggested = unmaskAtoms(suggestedMasked, atoms);
