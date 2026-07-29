@@ -132,15 +132,20 @@ export async function forwardRaw(
   body: unknown,
   timeoutMs = 60_000,
 ): Promise<RawForwardResult> {
-  const upstream = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(headers || {}),
-    },
-    body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let upstream: globalThis.Response;
+  try {
+    upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(headers || {}),
+      },
+      body: JSON.stringify(body ?? {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    throw describeNetworkError(error);
+  }
   return {
     status: upstream.status,
     contentType: upstream.headers.get('content-type') || 'application/json',
@@ -154,6 +159,45 @@ export class AiTimeoutError extends Error {
     super('上游响应超时');
     this.name = 'AiTimeoutError';
   }
+}
+
+/** 常见 errno → 人话，附「该查什么」。查不到就原样带上 code，总好过一句 fetch failed。 */
+const NET_HINTS: Record<string, string> = {
+  ENOTFOUND: 'DNS 解析不到这个域名（域名拼错，或本机 DNS/代理没生效）',
+  EAI_AGAIN: 'DNS 暂时解析失败（网络不稳或 DNS 服务器无响应）',
+  ECONNREFUSED: '对方拒绝连接（端口不对，或本机需要走代理才能出网）',
+  ECONNRESET: '连接被中途重置（常见于代理/VPN 不稳，或被网络中间设备切断）',
+  ETIMEDOUT: 'TCP 连接超时（网络不通，或被防火墙丢包）',
+  EPROTO: 'TLS 握手失败（代理在中间解 HTTPS，或证书被替换）',
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'TLS 证书验证不过（多半是代理/杀软在中间人解密）',
+  CERT_HAS_EXPIRED: '对方证书已过期',
+  DEPTH_ZERO_SELF_SIGNED_CERT: '对方用的是自签名证书',
+};
+
+/**
+ * 把 undici 的 `fetch failed` 拆开。
+ *
+ * Node 的 fetch 出网失败时 `message` 恒为 "fetch failed"，真因埋在 `cause.code`/`cause.message`
+ * 里。老代码直接 `throw error`，用户界面上只剩一句「结构化失败: fetch failed」——
+ * 零信息量，连是 DNS 挂了还是证书不过都分不出，我们自己也没法远程判断
+ * （2026-07-30 判例：用户 Word 转换恒失败，服务端一行日志都没有，只能靠加信息才定位）。
+ */
+export function describeNetworkError(error: unknown): Error {
+  if (!(error instanceof Error) || error.message !== 'fetch failed') {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  const code =
+    typeof cause === 'object' && cause !== null && 'code' in cause
+      ? String((cause as { code: unknown }).code)
+      : undefined;
+  const detail =
+    typeof cause === 'object' && cause !== null && 'message' in cause
+      ? String((cause as { message: unknown }).message)
+      : undefined;
+  const hint = code ? NET_HINTS[code] : undefined;
+  const parts = [hint ?? detail ?? '原因不明', code ? `[${code}]` : ''].filter(Boolean);
+  return new Error(`连不上 AI 服务商：${parts.join(' ')}`);
 }
 
 export interface ChatStreamOptions {
@@ -205,7 +249,7 @@ export async function chatCompleteStream(
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') throw new AiTimeoutError();
-    throw error;
+    throw describeNetworkError(error);
   }
   if (!resp.ok || !resp.body) {
     const snippet = (await resp.text().catch(() => '')).slice(0, 300);
@@ -245,7 +289,7 @@ export async function chatCompleteStream(
   } catch (error) {
     // 读流中途超时也走同一个 AbortSignal，映射成统一的超时错误
     if (error instanceof DOMException && error.name === 'TimeoutError') throw new AiTimeoutError();
-    throw error;
+    throw describeNetworkError(error);
   }
   if (full === '') {
     throw new Error('上游流式响应为空（该接口只支持 OpenAI 兼容格式）');
