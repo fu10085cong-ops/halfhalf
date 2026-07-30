@@ -733,6 +733,16 @@
 .hh-msg-err {
   color: #b3261e;
 }
+/* 保真可疑:比 warn 更重。产出里可能有 AI 添加的内容,用户会当成自己的笔记
+   打印进考场——给它红底提示,不能和"版面欠佳"一样只是变个字色。 */
+.hh-msg-danger {
+  display: block;
+  color: #b3261e;
+  background: #fce8e6;
+  border: 1px solid #f4c7c3;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
 
 /* ---------- 添加材料：异步导入进度（token 见 notebooklm.css） ---------- */
 .hh-upload-progress {

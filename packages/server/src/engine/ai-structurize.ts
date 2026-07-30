@@ -44,6 +44,58 @@ export interface StructurizeCheck {
   /** 人话问题清单（也是追问 AI 的修正依据） */
   problems: string[];
   blockCount: number;
+  /**
+   * true = 检出**疑似新增知识**（保真红线），而非单纯的结构瑕疵。
+   * 两者在界面上必须区别对待：结构差只是版面欠佳，知识被添加会被用户当成自己的笔记
+   * 打印进考场。
+   */
+  fabricationSuspected?: boolean;
+}
+
+/**
+ * 散文载荷字数：剥掉公式/代码/表格分隔行后只数中文字符。
+ *
+ * **为什么不数全部字符**（2026-07-30 实测判例）：结构化的本职之一是把 Unicode 公式
+ * 转成 LaTeX，`∫` → `\int` 一个符号变四五个拉丁字符。按全字符算，`slides-calculus`
+ * 这份**产出完美**的材料膨胀率报 1.45，是最接近阈值的假阳性；换成只数公式区外的中文，
+ * 它降到 0.96，六份材料的区间从 0.93~1.45 收窄到 0.87~1.05。
+ */
+export function prosePayload(markdown: string): number {
+  const prose = markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\$\$[\s\S]*?\$\$/g, ' ')
+    .replace(/\$[^$\n]*\$/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/^\s*\|[-:| ]+\|\s*$/gm, ' ');
+  return (prose.match(/[一-鿿]/g) ?? []).length;
+}
+
+/**
+ * 编造检测（保真红线的确定性判据，2026-07-30 立）。
+ *
+ * 判例：输入 18 字「死锁四条件 互斥 占有并等待 不可剥夺 循环等待」，产出 ~160 字中文，
+ * 把四个条件各自的定义**整段编了出来**，两次复跑都编。内容本身是对的操作系统知识，
+ * 所以更危险——用户会把 AI 替他写的话当成自己的笔记带进考场。
+ * 提示词里早就写着「只重组，不新增知识」和「禁止：补充用户材料里没有的知识」，**没管住**。
+ *
+ * 判据 `出 > 入 * 1.5 + 40`，一个式子同时罩住三种情况（实测数据见 RULES.md §4.15）：
+ * - 六份评测材料膨胀率 0.87~1.05，最紧的 `pandoc-db`（入 270 出 284）离上界还有 36%；
+ * - 18 字编造案（入 20 出 160，上界 70）被抓到；
+ * - **纯公式无散文**的材料（入 0 出 33，全是「标准形式」这类结构标签）被放行——
+ *   常数项 40 就是为它留的，纯比率会误杀。
+ *
+ * **已知局限**：它测的是总量。长文档里加一两句（入 500 出 600，上界 790）抓不到。
+ * 互补指标是「新颖 4-gram 率」，但实测正常区间 2~50%（chatlog 类材料被大幅重写属正常），
+ * 离编造案的 93% 太近，当门禁会误报——故只进 L3 当观察值，不当闸。
+ */
+export function checkFabrication(input: string, output: string): string[] {
+  const ci = prosePayload(input);
+  const co = prosePayload(output);
+  if (co <= ci * 1.5 + 40) return [];
+  return [
+    `疑似新增了原文没有的内容：原文散文 ${ci} 字，产出 ${co} 字。` +
+      `结构化只重组、不补充知识，请删掉原文里找不到依据的解释与举例`,
+  ];
 }
 
 /** 切块后单块超过它就算"巨型块"——2× maxBlockChars：细分仍超说明 AI 根本没分节 */
@@ -211,10 +263,22 @@ export async function structurize(
     { role: 'system', content: STRUCTURIZE_SYSTEM_PROMPT },
     { role: 'user', content },
   ];
+  /** 结构体检 + 编造检测合并成一次判定。后者要拿输入比对，故不并进 checkStructure */
+  const fullCheck = async (md: string): Promise<StructurizeCheck> => {
+    const base = await checkStructure(md);
+    const fab = checkFabrication(content, md);
+    return {
+      ...base,
+      ok: base.ok && fab.length === 0,
+      problems: [...base.problems, ...fab],
+      fabricationSuspected: fab.length > 0,
+    };
+  };
+
   let markdown = stripOuterFence(
     await stream(provider, messages, (d) => events.onDelta(d, 1), streamOpts)
   );
-  let check = await checkStructure(markdown);
+  let check = await fullCheck(markdown);
   let attempts = 1;
 
   if (!check.ok) {
@@ -230,7 +294,7 @@ export async function structurize(
     markdown = stripOuterFence(
       await stream(provider, retryMessages, (d) => events.onDelta(d, 2), streamOpts)
     );
-    check = await checkStructure(markdown);
+    check = await fullCheck(markdown);
     attempts = 2;
   }
 

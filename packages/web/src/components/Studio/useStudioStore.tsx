@@ -41,6 +41,12 @@ export interface StructurizeCheck {
   ok: boolean;
   problems: string[];
   blockCount: number;
+  /**
+   * true = 检出疑似新增知识(保真红线),而非单纯结构瑕疵。
+   * 界面必须区别对待:结构差只是版面欠佳,内容被添加会被用户当成自己的笔记打印进考场。
+   * 服务端定义见 packages/server/src/engine/ai-structurize.ts。
+   */
+  fabricationSuspected?: boolean;
 }
 
 /** PDF 结果卡的展示数据（blob URL 只活在会话内，不持久化） */

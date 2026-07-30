@@ -71,6 +71,13 @@ function ConvertCard({ msg }: { msg: StudioMessage }) {
             <span className="hh-msg-ok">
               <IconCheck size={12} /> 结构体检通过（{msg.check.blockCount} 块）· 已写回材料
             </span>
+          ) : msg.check.fabricationSuspected ? (
+            /* 保真问题与结构问题必须分开说。结构差只是版面欠佳；内容被 AI 添加，
+               用户会当成自己的笔记打印进考场，必须显式要求核对。 */
+            <span className="hh-msg-danger">
+              <IconAlert /> <strong>产出可能含 AI 添加的内容,请核对后再用</strong>：
+              {msg.check.problems.join('、')}（已写回材料，务必在左栏点开逐条对照原文）
+            </span>
           ) : (
             <span className="hh-msg-warn">
               <IconAlert /> 结构可能欠佳：{msg.check.problems.join('、')}（已写回材料，可在左栏点开修改）

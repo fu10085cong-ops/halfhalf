@@ -213,9 +213,22 @@ async function main() {
   }
 
   const manifest = JSON.parse(readFileSync(path.join(EVAL_DIR, 'manifest.json'), 'utf-8')) as Manifest;
-  const baseline: Record<string, EvalRow> = existsSync(BASELINE_PATH)
+  const stored: Record<string, unknown> = existsSync(BASELINE_PATH)
     ? JSON.parse(readFileSync(BASELINE_PATH, 'utf-8'))
     : {};
+  const storedMeta = stored._meta as { model?: string; endpoint?: string } | undefined;
+  const baseline = Object.fromEntries(
+    Object.entries(stored).filter(([k]) => k !== '_meta')
+  ) as Record<string, EvalRow>;
+
+  // 换模型会整体平移所有数字。基线不记模型的话，一个差异到底是代码改的还是换模型
+  // 造成的**根本分不清**——首轮基线就是这么埋下的坑（2026-07-30 补记）。
+  if (storedMeta?.model && storedMeta.model !== provider.model) {
+    console.log(
+      `\n⚠️  基线是用 ${storedMeta.model} 跑的，当前是 ${provider.model}——` +
+        `逐项 Δ 不可比。要换模型请按 TESTING.md §4：改动 + 对照 + --update 同一个提交。`
+    );
+  }
 
   const rows: EvalRow[] = [];
   for (const stage of ['structurize', 'compress'] as const) {
@@ -245,7 +258,11 @@ async function main() {
   }
 
   if (update) {
-    const merged = { ...baseline };
+    const merged: Record<string, unknown> = {
+      ...baseline,
+      // 记下产出这份基线的模型与端点：没有它就分不清"代码变了"和"模型变了"
+      _meta: { model: provider.model, endpoint: provider.endpoint },
+    };
     for (const r of rows) merged[`${r.stage}/${r.file}`] = r;
     writeFileSync(BASELINE_PATH, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
     console.log(`\n[eval] 基线已更新: ${BASELINE_PATH}`);

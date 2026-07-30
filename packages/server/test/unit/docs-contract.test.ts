@@ -199,6 +199,7 @@ test('TESTING.md §2 点名的每个 L1 闸函数都还在代码里', () => {
   for (const gate of [
     'checkStructure',
     'checkElementWhitelist',
+    'checkFabrication',
     'precheckFormulas',
     'isAcceptableTrial',
     'validateDocument',

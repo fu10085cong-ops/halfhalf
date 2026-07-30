@@ -7,8 +7,10 @@ import assert from 'node:assert/strict';
 import {
   STRICT_ORDER_MARK,
   STRUCTURIZE_SYSTEM_PROMPT,
+  checkFabrication,
   checkStructure,
   hasStrictSourceOrder,
+  prosePayload,
   stripOuterFence,
   structurize,
   type StreamFn,
@@ -261,4 +263,84 @@ test('顺序标记不进块、也不渲染成可见文字', async () => {
   assert.ok(!blocks.some((b) => /source-order/.test(b.markdown)), '切块器必须剥掉');
   const { html } = await markdownToHtml(md);
   assert.doesNotMatch(html, /source-order/, 'html:false 会把注释转义成可见文字,必须先剥');
+});
+
+/**
+ * 编造检测（2026-07-30 判例，详见 ai-structurize.ts 里 checkFabrication 的注释）：
+ * 输入 18 字「死锁四条件 互斥 占有并等待 不可剥夺 循环等待」，产出 ~160 字，
+ * 把四个条件的定义整段编了出来，复跑两次都编。提示词里的「只重组，不新增知识」没管住。
+ *
+ * 锁四件事：判据两侧都对、口径必须剔公式（否则 LaTeX 转换被误判成膨胀）、
+ * 疑似编造要单独打标（界面上要与结构瑕疵区别对待）、闸不合格必须触发追问。
+ */
+test('prosePayload 只数公式区外的中文——LaTeX 转换不算膨胀', () => {
+  // 同一份内容，Unicode 形态与 LaTeX 形态的散文载荷必须相等
+  assert.equal(prosePayload('判别式 Δ = p² - 4q'), prosePayload('判别式 $\\Delta = p^2 - 4q$'));
+  assert.equal(prosePayload('代码 ```py\nprint(123)\n```'), 2, '围栏代码不计入');
+  assert.equal(prosePayload('| 列 |\n|---|\n| 值 |'), 2, '表格分隔行不计入');
+});
+
+test('编造检测：该抓的抓', () => {
+  const input = '死锁四条件 互斥 占有并等待 不可剥夺 循环等待';
+  const fabricated =
+    '# 死锁四条件\n\n## 互斥\n资源一次只能被一个进程使用，若另一个进程请求该资源，' +
+    '必须等待直到资源被释放。\n\n## 占有并等待\n进程已经占有了至少一个资源，' +
+    '同时又在等待其他进程占有的资源，这是死锁形成的重要前提条件。\n\n' +
+    '## 不可剥夺\n资源不能被强制从占有它的进程中剥夺，只能由占有它的进程主动释放。';
+  assert.equal(checkFabrication(input, fabricated).length, 1, '整段编定义必须被抓到');
+  assert.match(checkFabrication(input, fabricated)[0], /新增/);
+});
+
+test('编造检测：不该误报的不误报', () => {
+  const input = '死锁四条件 互斥 占有并等待 不可剥夺 循环等待';
+  // 忠实重组：只加标题结构，一个字没编
+  assert.deepEqual(
+    checkFabrication(input, '# 死锁四条件\n\n## 互斥\n\n## 占有并等待\n\n## 不可剥夺\n\n## 循环等待'),
+    []
+  );
+  // 纯公式材料：入 0 中文，出若干结构标签——常数项就是为它留的，纯比率会误杀
+  assert.deepEqual(
+    checkFabrication('y=ax^2+bx+c  Δ=b^2-4ac', '# 二次方程\n\n标准形式：$y=ax^2+bx+c$\n\n判别式：$\\Delta=b^2-4ac$'),
+    []
+  );
+  // 剥噪声导致产出更短，天然合规
+  assert.deepEqual(checkFabrication('第 3 页 页脚\n\n进程是资源分配的基本单位', '# 进程\n\n进程是资源分配的基本单位'), []);
+});
+
+test('疑似编造要单独打标,并触发追问一轮', async () => {
+  const input = '死锁四条件 互斥 占有并等待 不可剥夺 循环等待';
+  const bloat =
+    '# 死锁四条件\n\n## 互斥\n资源一次只能被一个进程使用，其他进程请求时必须等待释放，' +
+    '这是并发控制的基本要求。\n\n## 占有并等待\n进程已占有资源同时等待其他资源，' +
+    '这一条件是死锁形成的关键环节之一。\n\n## 不可剥夺\n资源只能由占有者主动释放。';
+  const faithful = '# 死锁四条件\n\n## 互斥\n\n## 占有并等待\n\n## 不可剥夺\n\n## 循环等待';
+  let calls = 0;
+  const fake: StreamFn = async (_p, _m, onDelta) => {
+    calls += 1;
+    const out = calls === 1 ? bloat : faithful;
+    onDelta(out);
+    return out;
+  };
+  const retries: string[][] = [];
+  const r = await structurize(input, provider, { onDelta: () => {}, onRetry: (p) => retries.push(p) }, { streamFn: fake });
+  assert.equal(calls, 2, '编造必须触发追问一轮');
+  assert.equal(retries.length, 1);
+  assert.match(retries[0].join(''), /新增/, '追问里要写明是新增内容,AI 才知道删什么');
+  assert.equal(r.check.ok, true, '追问后忠实产出应当放行');
+  assert.equal(r.check.fabricationSuspected, false);
+});
+
+test('追问后仍在编 → 闸黑且打上 fabricationSuspected', async () => {
+  const input = '死锁四条件 互斥 占有并等待 不可剥夺 循环等待';
+  const bloat =
+    '# 死锁四条件\n\n## 互斥\n资源一次只能被一个进程使用，其他进程请求时必须等待释放，' +
+    '这是并发控制的基本要求。\n\n## 占有并等待\n进程已占有资源同时等待其他资源，' +
+    '这一条件是死锁形成的关键环节之一。\n\n## 不可剥夺\n资源只能由占有者主动释放。';
+  const fake: StreamFn = async (_p, _m, onDelta) => {
+    onDelta(bloat);
+    return bloat;
+  };
+  const r = await structurize(input, provider, { onDelta: () => {}, onRetry: () => {} }, { streamFn: fake });
+  assert.equal(r.check.ok, false);
+  assert.equal(r.check.fabricationSuspected, true, '界面要靠这个标记把保真问题与结构问题分开显示');
 });
