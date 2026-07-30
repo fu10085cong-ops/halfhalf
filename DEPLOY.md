@@ -114,6 +114,9 @@ docker compose logs -f --tail 100
 docker build --platform linux/amd64 -t halfhalf:latest .
 ```
 
-已验证过的部分（arm64 冒烟，详见 RULES.md §4.18）：构建成功、PyMuPDF 可导入、
-30 个 Noto CJK 字体在位、`/api/health` 2 秒内 200、容器内真排出中文 PDF 且目检无方块。
-**未验证**：amd64 平台的构建与运行。
+**arm64 与 amd64 双平台均已验证**（2026-07-30，详见 RULES.md §4.18）：构建成功、
+PyMuPDF 1.26.3 可导入、30 个 Noto CJK 字体在位、`/api/health` 2 秒内 200、
+容器内真排出中文 PDF 并目检确认中文/表格/代码高亮/KaTeX 公式全部正常。
+
+镜像 4.04GB，其中 1.93GB 是 Playwright 基础镜像自带的三个浏览器（本项目只用 Chromium）。
+瘦身方案已挂账，见 RULES.md §4.18——换基础镜像是部署关键改动，须单独验证。

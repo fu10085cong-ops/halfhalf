@@ -172,6 +172,11 @@ const NET_HINTS: Record<string, string> = {
   UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'TLS 证书验证不过（多半是代理/杀软在中间人解密）',
   CERT_HAS_EXPIRED: '对方证书已过期',
   DEPTH_ZERO_SELF_SIGNED_CERT: '对方用的是自签名证书',
+  // undici 自己的码（不是 OS errno）。2026-07-30 实测:走代理时最常撞见的就是这个,
+  // 消息里已带"attempted addresses",直接给出人话解释比只报 code 有用。
+  UND_ERR_CONNECT_TIMEOUT: '建连超时（网络不通或代理/VPN 太慢,默认 10 秒）',
+  UND_ERR_HEADERS_TIMEOUT: '上游收到请求但迟迟不回响应头（服务商过载或代理拦截）',
+  UND_ERR_SOCKET: '连接在传输中断开（代理/VPN 不稳）',
 };
 
 /**

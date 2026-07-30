@@ -1030,9 +1030,23 @@ monotonicOrder 开启后 12/12 归零。**刻意不进回归判据**——它还
 
 **目检成品 PDF**：中文渲染完好（不是方块）、表格正常、代码 Shiki 高亮有色。
 
-**⚠️ 这次构建的是 arm64 镜像**（本机 Apple Silicon），**跑不了 x86 服务器**。
-所以它的意义是**冒烟验证**——证明 Dockerfile 本身没问题、依赖装得上、字体在。
-真要部署得 `--platform linux/amd64` 重构一次或走 CI。**这一条没做，明记为缺口。**
+**amd64 平台也已验证（同日补做，缺口已关闭）**。本机是 Apple Silicon，首次只出了
+arm64 镜像（跑不了 x86 服务器）；随后 `--platform linux/amd64` 重构一次，QEMU 模拟下
+逐项复验：容器内 `uname -m` = x86_64、PyMuPDF 1.26.3、30 个 Noto CJK、`/api/health`
+2 秒内 200、**真排出一份中文 PDF（24pt/1 页/151KB，9 秒）**，目检中文完好、表格正常、
+代码高亮有色、**公式正确渲染成 KaTeX**。
+
+> 首次 amd64 构建曾因网络失败（`failed to fetch oauth token: EOF`）——与当天诊断出的
+> 代理问题同源（TLS 握手 3~7.5 秒、对未知主机 ECONNRESET、解析出 `198.18.0.33`
+> 这种 CGNAT 保留地址）。预拉两个基础镜像后重跑即成功，**不是项目缺陷**。
+
+**挂账：镜像 4.04GB，其中 1.93GB 是基础镜像自带的三个浏览器。**
+`mcr.microsoft.com/playwright:v1.61.1-jammy` 捆了 Chromium + Firefox + WebKit，
+而本项目只用 Chromium。改成 `node:20` + `playwright install --with-deps chromium`
+估计能砍掉 1GB 以上。**但换基础镜像是部署关键改动**（Dockerfile 头部那条版本对齐警告
+就是为它写的），要单独一轮验证，不在收尾时顺手做。
+（注：Docker Hub 上 7-25 推的旧镜像只有 1.04GB，但我拿不到它当时的 Dockerfile，
+**故不断言"变大了"是回归**，只记事实。）
 
 **顺带查出的缺陷一：`.dockerignore` 漏了 `.env`（已修）**
 
