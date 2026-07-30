@@ -7,7 +7,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "build": "tsc -p tsconfig.json && node -e \"const f=require('node:fs');f.cpSync('src/templates','dist/templates',{recursive:true});f.cpSync('src/workers','dist/workers',{recursive:true})\"",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit -p tsconfig.typecheck.json",
@@ -16,8 +16,8 @@
     "test:persistence": "tsx test/run-persistence-e2e.ts",
     "bench": "tsx test/run-bench.ts",
     "bench:document": "tsx test/run-document-bench.ts",
-    "bench:research": "tsx test/run-research-bench.ts",
-    "eval": "tsx test/run-eval.ts",
+    "bench:research": "tsx --env-file-if-exists=../../.env test/run-research-bench.ts",
+    "eval": "tsx --env-file-if-exists=../../.env test/run-eval.ts",
     "qc:render": "tsx test/run-render-qc.ts"
   },
   "dependencies": {

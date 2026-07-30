@@ -65,6 +65,11 @@ pnpm dev
 - 前端:http://localhost:5173
 - 后端 API:http://localhost:3000
 
+**可选:配服务器统一 AI key。** 复制 `.env.example` 成 `.env`(已 gitignore),填
+`HALFHALF_AI_ENDPOINT/MODEL/KEY` 三项——`pnpm dev`、`pnpm eval`、`pnpm bench:research`
+会自动读它(Node 20 原生 `--env-file-if-exists`,没有 `.env` 也不影响启动)。
+不配就得在界面「AI 设置」里填自己的 key。
+
 前端唯一界面是 Studio 三栏工作台(左 材料 / 中 对话 / 右 功能模块)。
 
 ### 导入材料
