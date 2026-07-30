@@ -182,3 +182,65 @@ test('取消：signal 已中断时立刻抛 AbortError，不发起搜索', async
   );
   assert.equal(searched, false);
 });
+
+/**
+ * 接地检测（2026-07-30 立，② 环节此前唯一没有 pass/fail 判据的地方）。
+ *
+ * 要防的是规格红线：「搜索不可用 → 明确报错，绝不退化成模型凭记忆生成」。
+ * 原有四段 throw 只保证"搜索失败时不调总结模型"，**没有任何判据检查产出本身是否接地**。
+ *
+ * 阈值 60% 的来历：实测 7 个查询（含冷门、符号密集、短查询）接地率全部 100%，
+ * 交叉负对照（A 的总结 × B 的证据池）只有 0~15%。详见 RULES.md §4.17。
+ */
+const GROUNDED_HITS = [
+  hit('https://blog.csdn.net/a/1', '银行家算法由 Dijkstra 于 1965 年提出，数据结构包括 Available、Max、Allocation、Need 四个矩阵。', '银行家算法'),
+];
+
+test('接地检测：总结用了检索内容 → 放行,零警告', async () => {
+  const doc = (await runResearch('银行家算法', stubProvider(GROUNDED_HITS), {
+    provider: stubProviderConfig(),
+    summarize: async () =>
+      '### 来自 blog.csdn.net\n- 银行家算法由 Dijkstra 于 1965 年提出\n- 数据结构：Available、Max、Allocation、Need',
+  })) as ImportedDocument;
+  assert.ok(!doc.summary.warnings?.some((w) => /找不到依据/.test(w)), '全接地时不该报未接地');
+});
+
+test('接地检测：总结与检索内容对不上 → 明确报错,且带上来源', async () => {
+  const err = await runResearch('银行家算法', stubProvider(GROUNDED_HITS), {
+    provider: stubProviderConfig(),
+    // 全是片段里没有的内容:典型的"模型凭记忆生成"
+    summarize: async () =>
+      '### 来自 example.org\n- 该算法在 1978 年由 Lamport 提出\n- 涉及 PAXOS、RAFT、ZOOKEEPER、ETCD 等实现\n- 复杂度 O(9999)',
+  }).catch((e: unknown) => e);
+  assert.ok(err instanceof ResearchError, '必须抛 ResearchError');
+  assert.equal(err.code, 'RESEARCH_NOT_GROUNDED');
+  assert.match(err.message, /凭记忆生成/);
+  assert.ok(
+    (err.details?.sources as { domain: string }[] | undefined)?.length,
+    '报错也要交出搜到的来源,用户至少能自己点开看'
+  );
+});
+
+test('接地检测:部分未接地 → 放行但逐个点名,让用户能核', async () => {
+  const doc = (await runResearch('银行家算法', stubProvider(GROUNDED_HITS), {
+    provider: stubProviderConfig(),
+    // 多数接地,夹一个片段里没有的年份
+    summarize: async () =>
+      '### 来自 blog.csdn.net\n- 由 Dijkstra 于 1965 年提出\n- 数据结构 Available、Max、Allocation、Need\n- 另据 1993 年的修订版说明',
+  })) as ImportedDocument;
+  const warn = doc.summary.warnings?.find((w) => /找不到依据/.test(w));
+  assert.ok(warn, '未接地内容必须点名');
+  assert.match(warn, /1993/);
+});
+
+test('接地检测的口径:域名与 LaTeX 不算幻觉,token 不足 5 个不判', async () => {
+  const { groundingRate } = await import('../../src/engine/research-pipeline.js');
+  // 域名是提示词给过模型的,总结里的「### 来自 <域名>」不该被判未接地
+  const g1 = groundingRate(
+    '### 来自 blog.csdn.net\n公式 $\\frac{a}{b}$、$\\Delta$ 与 Available、Allocation、1965、Dijkstra',
+    GROUNDED_HITS
+  );
+  assert.equal(g1?.rate, 1, `域名/LaTeX 不该算未接地,未接地项:${g1?.unsupported.join('、')}`);
+  // 可验证 token 太少时不作判断——小样本上的比率没有意义
+  assert.equal(groundingRate('### 来自 x\n- 很短', GROUNDED_HITS), null);
+});

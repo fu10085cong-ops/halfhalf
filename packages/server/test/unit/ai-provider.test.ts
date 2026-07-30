@@ -60,3 +60,44 @@ test('非 fetch failed 的错误原样透传——不许被这层改写', () => 
   const upstream = new Error('上游返回 401: no auth');
   assert.equal(describeNetworkError(upstream), upstream);
 });
+
+/**
+ * 环境变量名拼装锁（2026-07-30 判例）：给 resolveServerProvider 加 EVAL_ 前缀分组时，
+ * 默认前缀写成了空串，拼出 `HALFHALF_ENDPOINT`——**漏了 AI_**。
+ * 服务端统一 key 当场失效、界面上材料转换全部返回 501，而 `pnpm test` 全绿:
+ * 单测不碰真实 env，EVAL_ 那条路又恰好拼对，把主路径的断裂完全掩盖了。
+ * 这条锁直接断言两组变量名的字面拼装结果。
+ */
+test('resolveServerProvider 读的是 HALFHALF_AI_* 与 HALFHALF_EVAL_*，名字不许拼错', async () => {
+  const { resolveServerProvider } = await import('../../src/engine/ai-structurize.js');
+  const saved = { ...process.env };
+  const clear = () => {
+    for (const k of Object.keys(process.env)) if (k.startsWith('HALFHALF_')) delete process.env[k];
+  };
+  try {
+    clear();
+    assert.equal(resolveServerProvider(), null, '什么都没设时必须返回 null');
+
+    clear();
+    process.env.HALFHALF_AI_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions';
+    process.env.HALFHALF_AI_MODEL = 'main-model';
+    process.env.HALFHALF_AI_KEY = 'k1';
+    assert.equal(resolveServerProvider()?.model, 'main-model', '默认组必须读 HALFHALF_AI_*');
+    assert.equal(resolveServerProvider('EVAL_')?.model, 'main-model', 'EVAL_ 缺配时整组回落到主组');
+
+    process.env.HALFHALF_EVAL_ENDPOINT = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+    process.env.HALFHALF_EVAL_MODEL = 'weak-model';
+    process.env.HALFHALF_EVAL_KEY = 'k2';
+    assert.equal(resolveServerProvider('EVAL_')?.model, 'weak-model', 'EVAL_ 配齐时用评测组');
+    assert.equal(resolveServerProvider()?.model, 'main-model', '评测组不许污染主组');
+
+    // 混搭防线：评测组只配两项，必须整组回落，不能 endpoint 用评测组而 key 用主组
+    delete process.env.HALFHALF_EVAL_KEY;
+    const mixed = resolveServerProvider('EVAL_');
+    assert.equal(mixed?.model, 'main-model');
+    assert.match(mixed?.endpoint ?? '', /deepseek/, '端点也要跟着回落，不许混搭');
+  } finally {
+    clear();
+    Object.assign(process.env, saved);
+  }
+});

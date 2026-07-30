@@ -1,7 +1,8 @@
 /**
- * 联网补洞的真实基准。**观察型**（强度定义见仓库根 TESTING.md §3）：只打印供人看，
- * 无 pass/fail 判据、无基线对账——产出取决于当次搜到什么，精确对账必漂。
- * 不进 CI（要 key、结果不稳定）。立判据的思路见 TESTING.md §5 缺口。
+ * 联网补洞的真实基准。**门禁型**（强度定义见仓库根 TESTING.md §3，2026-07-30 由观察型升格）：
+ * 接地率破 60% 底线即 exit 1——判据与"当次搜到什么"无关，故可当硬门禁。
+ * 其余数字（耗时、采纳域名、分节产出）仍只打印供人看，无基线对账。
+ * 不进 CI（要 key）。
  *
  *   HALFHALF_SEARCH_KEY=... HALFHALF_AI_* =... pnpm bench:research -- "戴维南定理 适用条件"
  *
@@ -10,7 +11,7 @@
  */
 import { performance } from 'node:perf_hooks';
 import { loadBlocklist } from '../src/engine/blocklist.js';
-import { runResearch, ResearchError } from '../src/engine/research-pipeline.js';
+import { groundingRate, runResearch, ResearchError } from '../src/engine/research-pipeline.js';
 import { createSearchProvider } from '../src/engine/search-provider.js';
 import { filterSearchHits } from '../src/engine/source-quality.js';
 
@@ -55,6 +56,15 @@ try {
   console.log('='.repeat(70));
   console.log(`\n来源 ${doc.summary.sources?.length ?? 0} 个，正文 ${doc.summary.characterCount} 字`);
   for (const w of doc.summary.warnings) console.log(`  ⚠ ${w}`);
+  // 接地率:总结里的可验证内容(≥3 位数字、≥4 字母英文词)有多少能在片段里找到。
+  // <60% 时 runResearch 已经抛 RESEARCH_NOT_GROUNDED,所以这里能跑到就说明没破线;
+  // 60~99% 打印出来供人判断趋势。
+  const g = groundingRate(doc.markdown.split('## 来源')[0], report.kept);
+  console.log(
+    g
+      ? `接地率 ${(g.rate * 100).toFixed(0)}%（${g.total} 个可验证 token${g.unsupported.length ? '，未接地：' + g.unsupported.join('、') : '，全部接地'}）`
+      : '接地率：可验证 token 不足 5 个，不判'
+  );
 } catch (error) {
   if (error instanceof ResearchError) {
     console.error(`\n❌ ${error.code}: ${error.message}`);

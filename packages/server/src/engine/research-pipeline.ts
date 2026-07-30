@@ -41,6 +41,11 @@ export interface ResearchOptions {
   signal?: AbortSignal;
   onProgress?: (progress: ResearchProgress) => void;
   provider?: AiProviderConfig;
+  /**
+   * 总结环节的注入点（TESTING.md L2 硬要求：调模型的环节必须能在零 token、不联网的
+   * 条件下跑通全流程）。此前本管道缺这个口子，接地检测的行为锁只能靠捕异常绕过。
+   */
+  summarize?: (prompt: string) => Promise<string>;
 }
 
 /** 采纳几个源。瓶颈在用户要读，不在服务器。 */
@@ -77,6 +82,58 @@ export function buildSummaryPrompt(query: string, hits: SearchHit[]): string {
 6. 用要点式，简洁。这是要印在纸上带进考场的。
 
 ${blocks}`;
+}
+
+/**
+ * 接地检测（② 联网补洞的确定性判据，2026-07-30 立）。
+ *
+ * **要防的是什么**：规格红线写着「搜索不可用 → 明确报错，绝不退化成模型凭记忆生成」。
+ * 这条红线不是洁癖，是判例——`search-provider.ts` 头注释记着 DeepSeek 传
+ * `enable_search` 会 HTTP 200 静默忽略、内容全由模型编造。但那条红线只锁了"搜索失败时
+ * 不调总结模型"，**没有任何判据检查"总结到底有没有用检索到的东西"**。
+ *
+ * **为什么用「可验证 token 回溯率」而不是别的**（三次测法踩坑后定的口径）：
+ * - 不能用中文 4-gram：总结**本来就该改写**（不同于 structurize 的重组），实测回溯率
+ *   只有 4~13%，正常与异常无法区分。
+ * - 不能用裸数字：`pool.includes('2')` 在任何中文网页文本里都命中，短数字被无条件"找到"，
+ *   矩阵三行完全相同、零区分度。
+ * - 故只取**≥3 位数字**与**≥4 字母的英文词**：它们要么来自片段，要么是模型编的，
+ *   没有第三种可能。年份、序号、协议名、数据结构名都在这个集合里。
+ *
+ * **证据池必须 = 模型当时看到的全部内容**（domain + title + snippet，与 buildSummaryPrompt
+ * 逐字段对齐）。首版漏了 domain，于是总结里 `### 来自 <域名>` 那行的 CSDN / ZHIHU /
+ * ZHUANLAN 全被判成"未接地"，对角线被压到 17~77%——那是测法错，不是产出错。
+ * LaTeX 命令（`\frac` 这类）也剔掉：它是排版记号，不是知识。
+ *
+ * 返回 null 表示可验证 token 不足 5 个（很短的总结），此时不作判断——
+ * 小样本上的比率没有意义，宁可不报也不靠猜。
+ */
+/**
+ * 接地率下限。实测 7 个查询（含冷门、符号密集、短查询）**全部 100%**，
+ * 交叉负对照（A 的总结 × B 的证据池）只有 0~15%。60% 落在中间，两侧余量都极大。
+ * 破线意味着"总结基本没用检索结果"——即规格红线要防的"退化成模型凭记忆生成"。
+ */
+export const GROUNDING_FLOOR = 0.6;
+
+export function groundingRate(summary: string, hits: SearchHit[]): {
+  rate: number;
+  total: number;
+  unsupported: string[];
+} | null {
+  const scrubbed = summary.replace(/\\[A-Za-z]+/g, ' '); // LaTeX 命令不是知识
+  const tokens = [
+    ...new Set([
+      ...(scrubbed.match(/\d{3,}(?:\.\d+)?/g) ?? []),
+      ...(scrubbed.match(/[A-Za-z]{4,}/g) ?? []).map((w) => w.toUpperCase()),
+    ]),
+  ];
+  if (tokens.length < 5) return null;
+  const pool = hits
+    .map((h) => `${h.domain}\n${h.title}\n${h.snippet}`)
+    .join('\n')
+    .toUpperCase();
+  const unsupported = tokens.filter((t) => !pool.includes(t));
+  return { rate: (tokens.length - unsupported.length) / tokens.length, total: tokens.length, unsupported };
 }
 
 /**
@@ -158,9 +215,10 @@ export async function runResearch(
     // chatComplete 只接受超时数字，不吃 AbortSignal。用户中途取消时，任务会立刻
     // 被标记 cancelled、产物丢弃，但这一次上游调用仍会跑完——代价是浪费一次调用。
     // 为此改动 chatComplete 会波及 compress 链路，不值得，故接受。
-    summary = await chatComplete(options.provider ?? serverProvider(), [
-      { role: 'user', content: buildSummaryPrompt(trimmed, report.kept) },
-    ]);
+    const prompt = buildSummaryPrompt(trimmed, report.kept);
+    summary = options.summarize
+      ? await options.summarize(prompt)
+      : await chatComplete(options.provider ?? serverProvider(), [{ role: 'user', content: prompt }]);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw error;
     // 总结挂了也要把搜到的东西交出去，用户至少能自己点开看
@@ -173,6 +231,21 @@ export async function runResearch(
   }
 
   throwIfAborted(options.signal);
+
+  // 接地检测：总结到底有没有用检索到的东西。原有的四段 throw 只保证"搜索失败时不调
+  // 总结模型"，没有任何判据检查产出本身是否接地——这是 ② 环节此前唯一没有 pass/fail
+  // 判据的地方（TESTING.md §5 的自陈缺口）。
+  const grounding = groundingRate(summary, report.kept);
+  if (grounding && grounding.rate < GROUNDING_FLOOR) {
+    throw new ResearchError(
+      'RESEARCH_NOT_GROUNDED',
+      `总结与检索到的内容对不上（可验证内容只有 ${Math.round(grounding.rate * 100)}% 能在片段里找到），` +
+        `判定为模型凭记忆生成而非基于检索结果，已丢弃。请换关键词重试。`,
+      502,
+      { sources: report.kept.map(toSource) }
+    );
+  }
+
   options.onProgress?.({ progress: 92, stage: 'finalizing', message: '正在组装可追溯内容…' });
 
   const markdown = assembleResearchMarkdown(trimmed, summary, report.kept);
@@ -184,6 +257,13 @@ export async function runResearch(
       : []),
     ...(report.kept.length < KEEP_SOURCES
       ? [`符合质量要求的来源只有 ${report.kept.length} 个。`]
+      : []),
+    // 没破线但有未接地内容:逐个点名让用户能核。实测正常应当是 0 个。
+    ...(grounding && grounding.unsupported.length > 0
+      ? [
+          `${grounding.unsupported.length} 处内容在检索片段里找不到依据，` +
+            `请重点核对：${grounding.unsupported.slice(0, 8).join('、')}`,
+        ]
       : []),
   ];
 

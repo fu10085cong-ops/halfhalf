@@ -205,9 +205,13 @@ async function main() {
   const update = args.includes('--update');
   const only = args.find((a) => a === 'structurize' || a === 'compress');
 
-  const provider = resolveServerProvider();
+  // 评测优先用 HALFHALF_EVAL_*（钉弱模型，见 ai-structurize 里的说明），缺则回落主组
+  const provider = resolveServerProvider('EVAL_');
   if (!provider) {
-    console.error('[eval] 需要 HALFHALF_AI_ENDPOINT / MODEL / KEY 三个环境变量');
+    console.error(
+      '[eval] 需要 HALFHALF_EVAL_ENDPOINT/MODEL/KEY（推荐，钉弱模型）' +
+        '或 HALFHALF_AI_ENDPOINT/MODEL/KEY 三个环境变量'
+    );
     process.exitCode = 2;
     return;
   }

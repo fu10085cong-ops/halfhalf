@@ -220,12 +220,25 @@ export function stripOuterFence(md: string): string {
 }
 
 /** 服务器统一 key（三个 env 齐全才算配置了）；端点是部署者自有的，受信任 */
-export function resolveServerProvider(): AiProviderConfig | null {
-  const endpoint = process.env.HALFHALF_AI_ENDPOINT;
-  const model = process.env.HALFHALF_AI_MODEL;
-  const key = process.env.HALFHALF_AI_KEY;
-  if (!endpoint || !model || !key) return null;
-  return { endpoint, model, headers: { Authorization: `Bearer ${key}` } };
+/**
+ * 服务器统一 key（三个 env 齐全才算配置了）；端点是部署者自有的，受信任。
+ *
+ * `prefix='EVAL_'` 读 `HALFHALF_EVAL_ENDPOINT/MODEL/KEY`，缺任一项回落到主组。
+ * **为什么要分两组**（2026-07-30 定案，RULES.md §4.16）：应用该用强模型（质量好），
+ * 而评测该**钉在最弱的支持档上**——弱模型才暴露提示词缺陷。精简恒定失效、结构化编造
+ * 这两个判例都是弱模型先露出来的，换强模型会把提示词的毛病盖住。
+ */
+export function resolveServerProvider(prefix: 'AI_' | 'EVAL_' = 'AI_'): AiProviderConfig | null {
+  const pick = (name: string) =>
+    process.env[`HALFHALF_${prefix}${name}`]?.trim() || undefined;
+  const endpoint = pick('ENDPOINT');
+  const model = pick('MODEL');
+  const key = pick('KEY');
+  if (endpoint && model && key) {
+    return { endpoint, model, headers: { Authorization: `Bearer ${key}` } };
+  }
+  // 三项不齐就整组回落，不许 endpoint 用评测组而 key 用主组这种混搭
+  return prefix === 'EVAL_' ? resolveServerProvider('AI_') : null;
 }
 
 export interface StructurizeEvents {

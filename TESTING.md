@@ -73,7 +73,7 @@
 |---|---|---|---|
 | ⓪ AI 结构化 | `checkStructure` + `checkElementWhitelist`（4 条）+ `checkFabrication` | `ai-structurize.test.ts` | `pnpm eval -- structurize` |
 | ① AI 精简 | 三道安全网：原子保全 / 公式预检（`precheckFormulas`）/ 确实精简 | `ai-compress.test.ts` + `atom-mask.test.ts` | `pnpm eval -- compress` |
-| ② 联网补洞 | 4 段 throw + 质量闸 + 恒定 warning | `research-pipeline.test.ts` 等 3 份 | `pnpm bench:research`（观察型） |
+| ② 联网补洞 | 4 段 throw + 质量闸 + 恒定 warning + `groundingRate`（接地率 ≥60%） | `research-pipeline.test.ts` 等 3 份 | `pnpm bench:research`（门禁型） |
 | ③ AI 对话 | **无（有意）——闸在下游** | `ai-chat.test.ts` | 不单独评（见下） |
 | ④ 文档导入 | 错误码 + 路由判据 + 空成功拒绝 | `document-import.test.ts` + `knowledge-ir.test.ts` | `pnpm bench:document`（门禁型） |
 | ⑤ 重点规划 | `validateDocument` / `validateInputs` + fileHash | `restructure-*.test.ts` | 不需要（纯确定性算子） |
@@ -95,9 +95,9 @@
 
 | 强度 | 含义 | exit code | 现有脚本 |
 |---|---|---|---|
-| **门禁型** | 绝对阈值，破线即失败 | 破线 → 1 | `pnpm test`、`pnpm bench:document`（7 条 gate）、`pnpm qc:render` |
+| **门禁型** | 绝对阈值，破线即失败 | 破线 → 1 | `pnpm test`、`pnpm bench:document`（7 条 gate）、`pnpm qc:render`、`pnpm bench:research`（接地率） |
 | **对账型** | 与冻结基线逐项 diff，由人裁决 | 恒 0（除非崩溃） | `pnpm bench`、`pnpm eval` |
-| **观察型** | 只打印供人看，无判据 | 恒 0 | `pnpm bench:research` |
+| **观察型** | 只打印供人看，无判据 | 恒 0 | （暂无——`bench:research` 已于 2026-07-30 升格为门禁型） |
 
 **AI 环节为什么是对账型而不是门禁型**：模型输出有随机性，硬门禁会持续假阳性，
 最后的结局一定是"大家都学会了忽略这个红灯"。对账型把判断权交给人，但基线让"变差了"
@@ -175,10 +175,12 @@ L3 覆盖 ⓪①（9 份合成材料 ✳️，112 个锚点），②④⑥ 有�
 - **eval 基线不记模型（已补 `_meta`）**：换模型会整体平移所有数字，不记模型就分不清
   "代码变了"和"模型变了"。首轮基线（glm-4-flash）就没记。
 
+**② 联网补洞的判据已立（2026-07-30，详见 RULES.md §4.17）**：`groundingRate` —— 总结里的
+**可验证 token**（≥3 位数字、≥4 字母英文词）有多少能在检索片段里找到。实测 7 个查询
+（含冷门、符号密集、短查询）全部 100%，交叉负对照（A 的总结 × B 的证据池）只有 0~15%，
+故 60% 底线两侧余量都极大、可当硬门禁。**至此七个环节全部有 pass/fail 判据。**
+
 **缺口**：
 
 - L3 的材料全是合成 ✳️。真实材料入库后证据等级才能升级（同 RULES.md §2.4 的口径）。
-- ② 联网仍是观察型，没有 pass/fail 判据。它的产出依赖当次搜到什么，做精确对账会漂——
-  要立标准需要先想清楚"哪些属性与搜索结果无关"（候选：总结里的数字是否都在片段里出现过，
-  即确定性幻觉检测）。
 - 无 CI。所有门禁都靠本地手工触发。
