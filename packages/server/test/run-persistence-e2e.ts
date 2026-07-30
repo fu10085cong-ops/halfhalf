@@ -1,3 +1,8 @@
+/**
+ * 异步导入任务持久化的端到端验证 —— **门禁型**（强度定义见仓库根 TESTING.md §3）：
+ * 任一环节不符即抛错退出。要真起一次服务、真跑一份 PDF/DOCX，所以不进 `pnpm test`，
+ * 需要你手动给一份材料：pnpm test:persistence -- <path-to-pdf-or-docx>
+ */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

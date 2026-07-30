@@ -56,6 +56,14 @@ interface BenchRow {
   cramped: number;
   /** B1 模糊带双跑裁决是否触发 */
   b1: boolean;
+  /**
+   * 阅读顺序逆序对 —— **观察值,不做回归判据**(2026-07-30 入,RULES.md §4.12)。
+   * 按「栏 → 栏内 y」还原人眼阅读顺序,数源块序号的逆序对。0 = 完全按原文顺序读。
+   * 已验证:java-oop 页2 报 49 且目检确认乱序;monotonicOrder 开启后 12/12 材料归零。
+   * 与 §4.8 废弃的"回跳数"不同:那个直接数 y 回跳,新开栏天然产生回跳因而无效。
+   * 先只让它可见,不设阈值——"多少算坏"要攒够真材料才能定。
+   */
+  inv: number;
   /** 参考值,不做回归判据 */
   ms: number;
 }
@@ -97,6 +105,31 @@ async function benchOne(entry: (typeof SUITE)[number]): Promise<BenchRow> {
     .sort((a, b) => a[0] - b[0])
     .map(([, area]) => Math.round((area / pageArea) * 100));
 
+  // —— 观察指标(不进回归判据) ——
+  // 逆序对:按「栏 → 栏内 y」还原人眼阅读顺序,数源块序号的逆序对。
+  // 与 §4.8 废弃的"回跳数"不同:那个直接数 y 回跳,新开栏会天然产生回跳因而无效。
+  const srcIdx = new Map(outcome.blocks.map((b, i) => [b.id, i]));
+  const perPage = new Map<
+    number,
+    { i: number; col: number; y: number }[]
+  >();
+  for (const pl of best.placements) {
+    const list = perPage.get(pl.page) ?? [];
+    list.push({
+      i: srcIdx.get(pl.id) ?? 0,
+      col: pl.column,
+      y: pl.yMm,
+    });
+    perPage.set(pl.page, list);
+  }
+  let inv = 0;
+  for (const list of perPage.values()) {
+    const seq = [...list].sort((a, b) => a.col - b.col || a.y - b.y).map((x) => x.i);
+    for (let i = 0; i < seq.length; i++) {
+      for (let j = i + 1; j < seq.length; j++) if (seq[i] > seq[j]) inv += 1;
+    }
+  }
+
   return {
     file: entry.file,
     scene: finalDerived.sceneEquivalent,
@@ -107,6 +140,7 @@ async function benchOne(entry: (typeof SUITE)[number]): Promise<BenchRow> {
     oversized: best.oversized.length,
     cramped: best.cramped.length,
     b1: finalDerived.trace.some((t) => t.rule === 'B1'),
+    inv,
     ms,
   };
 }
@@ -135,7 +169,9 @@ async function main() {
         `${row.fontSize}pt${fmtDelta(row.fontSize, b?.fontSize, 'pt')}  ` +
         `${row.pages}页${fmtDelta(row.pages, b?.pages, '页')}${row.within ? '' : '(未达标)'}  ` +
         `填充 ${row.fills.map((f, i) => `${f}%${fmtDelta(f, b?.fills?.[i])}`).join('/')}` +
-        `${row.b1 ? '  ⚖️B1' : ''}${warn}  ${(row.ms / 1000).toFixed(1)}s`
+        `${row.b1 ? '  ⚖️B1' : ''}${warn}` +
+        `  逆序${row.inv}${fmtDelta(row.inv, b?.inv)}` +
+        `  ${(row.ms / 1000).toFixed(1)}s`
     );
   }
 
@@ -146,6 +182,8 @@ async function main() {
   } else if (Object.keys(baseline).length === 0) {
     console.log('\n[bench] 尚无基线——用 --update 生成首轮基线');
   } else {
+    // 回归判据只有这五项。inv 是观察值,**刻意不在此列**——
+    // 它们还没有"多少算坏"的判据,进了这里就会把人训练成忽略红灯(同 TESTING.md §3 的理由)。
     const changed = rows.filter((r) => {
       const b = baseline[r.file];
       return (

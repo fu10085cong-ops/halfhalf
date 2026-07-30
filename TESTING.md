@@ -71,8 +71,8 @@
 
 | 环节 | L1 产出闸 | L2 行为锁 | L3 评测 |
 |---|---|---|---|
-| ⓪ AI 结构化 | `checkStructure` + 元素白名单 4 条 | `ai-structurize.test.ts` | `pnpm eval -- structurize` |
-| ① AI 精简 | 三道安全网（原子保全 / 公式预检 / 确实精简） | `ai-compress.test.ts` + `atom-mask.test.ts` | `pnpm eval -- compress` |
+| ⓪ AI 结构化 | `checkStructure` + `checkElementWhitelist`（4 条） | `ai-structurize.test.ts` | `pnpm eval -- structurize` |
+| ① AI 精简 | 三道安全网：原子保全 / 公式预检（`precheckFormulas`）/ 确实精简 | `ai-compress.test.ts` + `atom-mask.test.ts` | `pnpm eval -- compress` |
 | ② 联网补洞 | 4 段 throw + 质量闸 + 恒定 warning | `research-pipeline.test.ts` 等 3 份 | `pnpm bench:research`（观察型） |
 | ③ AI 对话 | **无（有意）——闸在下游** | `ai-chat.test.ts` | 不单独评（见下） |
 | ④ 文档导入 | 错误码 + 路由判据 + 空成功拒绝 | `document-import.test.ts` + `knowledge-ir.test.ts` | `pnpm bench:document`（门禁型） |
@@ -136,8 +136,12 @@
 
 ## 5. 现状与缺口台账
 
-**已达标**：七个环节 L1 全部就位（③ 按设计豁免），L2 全部就位（183 个单测），
+**已达标**：七个环节 L1 全部就位（③ 按设计豁免），L2 全部就位（每个环节都有对应
+测试文件，见 §2 矩阵——这条由 `docs-contract.test.ts` 锁住，点名的文件不存在就红），
 L3 覆盖 ⓪①（9 份合成材料 ✳️，112 个锚点），②④⑥ 有各自形态的跑分器。
+
+> 这里刻意**不写单测总数**：那个数字每加一条锁就腐烂一次，而"数字对不对"本身没有信息量。
+> 有信息量的是"每个环节都有锁"，那条能机械验证。
 
 **第二轮发现（2026-07-29，分支收编，详见 RULES.md §4.10）**：
 
