@@ -103,3 +103,17 @@ docker compose logs -f --tail 100
 2. 带口令 curl `/api/scene` 通、无口令 401、`/api/fixtures` 404;
 3. 导入一份真实 PDF,`docker compose restart` 后仍能在最近任务里打开并恢复内容;
 4. 按 EXPERIMENT.md 的「十分钟北极星演练」用一份真实无结构材料全流程计时,超时段记进演练日志。
+
+
+## 构建平台（2026-07-30 记）
+
+本机若是 Apple Silicon，`docker build` 出来的是 **arm64 镜像，跑不了 x86 服务器**。
+部署前必须显式指定平台：
+
+```bash
+docker build --platform linux/amd64 -t halfhalf:latest .
+```
+
+已验证过的部分（arm64 冒烟，详见 RULES.md §4.18）：构建成功、PyMuPDF 可导入、
+30 个 Noto CJK 字体在位、`/api/health` 2 秒内 200、容器内真排出中文 PDF 且目检无方块。
+**未验证**：amd64 平台的构建与运行。

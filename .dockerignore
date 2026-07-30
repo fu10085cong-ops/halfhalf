@@ -1,4 +1,12 @@
 # 构建上下文排除项：依赖在镜像内重装，产物在镜像内重建，本地这些别带进去
+
+# —— 秘密：绝不能进构建上下文 ——
+# builder 阶段有 `COPY . .`，.env 一旦进来就会被烤进镜像层留在构建缓存里。
+# .env.example 是纯文档、不含真值，保留。
+.env
+.env.*
+!.env.example
+
 node_modules
 **/node_modules
 dist
@@ -12,4 +20,6 @@ playwright-report
 .DS_Store
 **/.DS_Store
 .claude
+# 本地教学手册（gitignored），与运行无关
+docs/tutor
 EXPERIMENT.md

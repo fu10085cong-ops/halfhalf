@@ -152,6 +152,18 @@ const UNICODE_SUPSUB = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ⁿⁱ₀₁₂₃�
 const MD_LINK = /(?<!!)\[[^\]\n]*\]\(\s*https?:\/\/[^)]*\)|<https?:\/\/[^>\s]+>/g;
 /** 整行分隔线或 setext 下划线(三个以上的横线、星号或下划线):FORMAT.md 禁用,标题一律 ATX */
 const DIVIDER_LINE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+/**
+ * 行内混排的 `$$`:FORMAT.md 规定块级公式必须**独立成行**,而渲染器(markdown-it-katex
+ * 的 math_block)也只认独立成行的形态——`能量关系：$$E = mc^2$$` 会被整段当普通文字,
+ * `$$` 原样印进小抄。
+ *
+ * **这是闸与渲染器判断不一致的第二例**(2026-07-30,Docker 冒烟验证时目检发现):
+ * precheckFormulas 扫 `$$...$$` 拿到 `E = mc^2`、KaTeX 渲染通过 → 判"公式干净",
+ * 而渲染器根本没把它当公式。今早修的那例方向相反(渲染器显红字而预检不认)。
+ * 两例的共同教训:**任何"判据与渲染器各自解析同一段文本"的地方都要对齐**。
+ */
+const INLINE_DISPLAY_MATH = /^(?!\s*\$\$[^$]*\$\$\s*$).*\S\s*\$\$[^$\n]*\$\$/;
+
 /** 裸 HTML 标签(不带属性的常见泄漏形态)。刻意不匹配带属性写法——
  *  "若 a<b 且 c>d" 这类比较符散文会被宽泛正则误伤,窄匹配零误报优先 */
 const BARE_HTML_TAG = /<\/?(?:br|hr|b|i|u|em|strong|p|div|span|sub|sup|table|tr|td|th|ul|ol|li|img|a|code|pre|center|font)\s*\/?>/i;
@@ -187,6 +199,17 @@ function checkElementWhitelist(markdown: string): string[] {
   if (dividers.length > 0) {
     problems.push(
       `有 ${dividers.length} 处分隔线或下划线式标题（---/***/___）——标题一律用 # 井号，分隔线删掉`
+    );
+  }
+  const inlineDisplay = markdown
+    .split('\n')
+    .filter((l) => INLINE_DISPLAY_MATH.test(l))
+    .slice(0, 3);
+  if (inlineDisplay.length > 0) {
+    problems.push(
+      `有 ${inlineDisplay.length} 处 $$...$$ 和文字写在同一行——块级公式必须独立成行` +
+        `（前后各空一行），否则渲染时不认公式、$$ 会原样印出来。` +
+        `想放在句子里就用单个 $ 的行内公式：${inlineDisplay.map((l) => `「${l.trim().slice(0, 30)}」`).join('、')}`
     );
   }
   const htmlTag = prose.match(BARE_HTML_TAG);

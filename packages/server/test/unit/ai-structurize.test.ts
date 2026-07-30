@@ -344,3 +344,40 @@ test('追问后仍在编 → 闸黑且打上 fabricationSuspected', async () => 
   assert.equal(r.check.ok, false);
   assert.equal(r.check.fabricationSuspected, true, '界面要靠这个标记把保真问题与结构问题分开显示');
 });
+
+/**
+ * 行内混排 $$ 的白名单锁（2026-07-30，Docker 冒烟验证目检发现）。
+ *
+ * 这是**闸与渲染器判断不一致的第二例**：precheckFormulas 扫 `$$...$$` 拿到公式体、
+ * KaTeX 渲染通过 → 判"公式干净"，而渲染器（markdown-it-katex 的 math_block）
+ * 只认独立成行的形态，`能量关系：$$E = mc^2$$` 会被整段当普通文字，
+ * **`$$` 原样印进小抄**。今早修的那例方向相反（渲染器显红字而预检不认）。
+ */
+test('行内混排的 $$ 被拒——渲染器不认它，$$ 会原样印出来', async () => {
+  const r = await checkStructure('# 标题\n\n## 一节\n\n能量与质量的关系：$$E = mc^2$$');
+  assert.equal(r.ok, false);
+  assert.match(r.problems.join(''), /独立成行/);
+  assert.match(r.problems.join(''), /行内公式/, '要给出替代写法,否则 AI 不知道怎么改');
+});
+
+test('合法的四种公式写法都不误报', async () => {
+  for (const [what, md] of [
+    ['独立成行 $$', '# 标题\n\n## 一节\n\n关系：\n\n$$E = mc^2$$'],
+    ['行内单 $', '# 标题\n\n## 一节\n\n能量关系 $E = mc^2$ 很重要，务必牢记这条结论。'],
+    ['多行块级 $$', '# 标题\n\n## 一节\n\n推导：\n\n$$\n\\int_0^1 x dx = \\frac12\n$$'],
+    ['表格单元里的 $', '# 标题\n\n## 一节\n\n| 名称 | 式子 |\n|---|---|\n| 质能 | $E=mc^2$ |'],
+  ] as [string, string][]) {
+    assert.equal((await checkStructure(md)).ok, true, `不该拒:${what}`);
+  }
+});
+
+test('渲染器与判据对 $$ 的解析必须一致——两边都验', async () => {
+  // 判据放行的写法，渲染器必须真渲染成 KaTeX；判据拒掉的写法，渲染器确实不认
+  const ok = '关系：\n\n$$E = mc^2$$';
+  const bad = '关系：$$E = mc^2$$';
+  const { html: okHtml } = await markdownToHtml(ok);
+  assert.match(okHtml, /class="katex/, '判据放行的写法必须真被渲染');
+  assert.doesNotMatch(okHtml, /\$\$/, '不该有 $$ 残留');
+  const { html: badHtml } = await markdownToHtml(bad);
+  assert.match(badHtml, /\$\$/, '判据拒掉的写法确实会漏 $$ ——这就是拒它的理由');
+});
