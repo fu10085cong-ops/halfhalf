@@ -1040,7 +1040,7 @@ arm64 镜像（跑不了 x86 服务器）；随后 `--platform linux/amd64` 重�
 > 代理问题同源（TLS 握手 3~7.5 秒、对未知主机 ECONNRESET、解析出 `198.18.0.33`
 > 这种 CGNAT 保留地址）。预拉两个基础镜像后重跑即成功，**不是项目缺陷**。
 
-**挂账：镜像 4.04GB，其中 1.93GB 是基础镜像自带的三个浏览器。**
+**挂账：镜像 4.04GB，其中 1.93GB 是基础镜像自带的三个浏览器。**（已销账 → §4.19）
 `mcr.microsoft.com/playwright:v1.61.1-jammy` 捆了 Chromium + Firefox + WebKit，
 而本项目只用 Chromium。改成 `node:20` + `playwright install --with-deps chromium`
 估计能砍掉 1GB 以上。**但换基础镜像是部署关键改动**（Dockerfile 头部那条版本对齐警告
@@ -1076,3 +1076,32 @@ builder 阶段有 `COPY . .`，而 `.dockerignore` 排了 node_modules / dist / 
 **两例的共同教训写在这里**：凡"判据与渲染器各自解析同一段文本"的地方都必须对齐，
 而且**锁要两边都验**——新加的锁不只断言判据拒了它，还断言渲染器确实会漏 `$$`
 （那才是拒它的理由）。
+
+### 4.19 镜像瘦身销账：slim 基底 + playwright 自装 headless shell（2026-08-01）
+
+§4.18 的挂账，单独一轮双平台验证后落地。改动是 Dockerfile 运行时阶段整体换底：
+
+| | 旧方案 | 新方案 |
+|---|---|---|
+| 基底 | `mcr.microsoft.com/playwright:v1.61.1-jammy` | `node:20-bookworm-slim` |
+| 浏览器 | 镜像捆 Chromium+Firefox+WebKit 三件 | 构建时 `playwright install --with-deps --only-shell chromium` |
+| 版本对齐 | **人肉**对齐镜像 tag ↔ pnpm-lock，对不齐报 browser not found | CLI 来自项目 node_modules，**天然一致，警告连同事故类别一起消灭** |
+| 容器内 Node | v24（镜像自带，与开发机 v20 不同版） | **v20.20.2，与开发机同版** |
+| 展开体积 | 4.24GB(arm64) / 4.04GB(amd64) | **2.08GB** |
+| 传输体积（`docker save` 压缩层） | 1.08GB | **0.53GB** |
+
+**`--only-shell` 的判据**：browser-pool.ts 固定 `headless: true`，Playwright ≥1.49 无头
+默认走 headless shell（334MB），完整版 Chromium（624MB）纯属死重。不是读码推论——
+实测在容器里 `rm -rf chromium-1228` 后照常排出 2 页/16.5pt。
+
+**双平台验证**（口径与 §4.18 完全一致）：aarch64/x86_64、Node v20.20.2、PyMuPDF 1.26.3、
+Noto CJK 30 字体、health 2 秒 200、真排 os-large.md → 2 页/16.5pt/text-cram
+（arm64 2 秒、amd64 QEMU 下 15 秒），两平台 PDF **字节数一致**（657508，diff 仅头部
+时间戳元数据），双页 PNG 目检：中文/表格/KaTeX（含下标 EAT 公式）全部正常。
+
+两个顺带的口径记录：
+- containerd 存储下 `docker images` 对跨平台镜像显示失真（amd64 显示 530MB），
+  层级 `docker history` 加总与 `docker save` 才是真值——量镜像体积别只看 images 列表。
+- bookworm 的 pip 有 PEP 668 保护，容器内 `--break-system-packages` 直接放行是正解。
+
+层顺序刻意排过：浏览器安装层在 dist 拷贝**之前**，改源码重打镜像不重下浏览器。

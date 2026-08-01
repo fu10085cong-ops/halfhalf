@@ -1,6 +1,7 @@
 # HalfHalf 部署手册
 
-单容器形态：Express 同源托管 `/api` + 前端静态资源，Playwright 官方镜像打底。
+单容器形态：Express 同源托管 `/api` + 前端静态资源，`node:20-bookworm-slim` 打底、
+Chromium(headless shell)由 playwright npm 包在构建时自装——版本天然与 lockfile 一致。
 适用目标：一台 1~2G 内存的云服务器，供同学们通过网址直接使用（应急十分钟路径的前提）。
 
 ## 0. 服务器要求
@@ -28,8 +29,8 @@ docker build -t <registry>/halfhalf:latest .
 docker push <registry>/halfhalf:latest
 ```
 
-⚠️ Dockerfile 头部注释：基础镜像 tag（当前 `v1.61.1`）必须与 pnpm-lock 的 playwright 版本一致，
-升级 playwright 后要同步改，否则容器报 "browser not found"。
+升级 playwright 版本不需要改 Dockerfile：浏览器由镜像内的 playwright CLI 安装，
+版本永远跟着 pnpm-lock 走（旧方案要人肉对齐基础镜像 tag，对不齐报 "browser not found"）。
 
 ## 3. 服务器上运行
 
@@ -76,7 +77,8 @@ docker compose logs -f --tail 100
 # 常见病
 # - 中文 PDF 全方块：镜像没装 fonts-noto-cjk（用本仓库 Dockerfile 不会发生）
 # - "browser has been closed"/内存爆:HALFHALF_MAX_PAGES 调回 1,确认 swap 存在
-# - "browser not found":镜像 tag 与 playwright npm 版本不一致(见第 2 节)
+# - "browser not found":镜像大概率是旧方案(Playwright 官方镜像打底)构建的,tag 与
+#   playwright npm 版本没对齐;用当前 Dockerfile 重打即可(浏览器改由 npm 包自装)
 # - 改了代码行为没变:先确认打的是新镜像,再怀疑代码(僵尸容器同理:docker ps 看创建时间)
 # - PDF_VISUAL_RENDER_FAILED:原页保真 Worker 起不来。进容器 `python3 -c "import fitz"`
 #   验证 PyMuPDF 装上了,再看 HALFHALF_PYTHON 是否指对
