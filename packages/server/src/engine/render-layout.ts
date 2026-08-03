@@ -19,6 +19,7 @@ import { withPage } from './browser-pool.js';
 import { markdownToHtml } from './md-to-html.js';
 import {
   KATEX_CSS_INLINED,
+  FONT_CSS_INLINED,
   PRINT_CSS,
   applyAtomScaling,
   renderMermaidDiagrams,
@@ -184,6 +185,7 @@ export async function renderRectsPdf(
 <head>
 <meta charset="utf-8" />
 <style>
+  ${FONT_CSS_INLINED}
   ${KATEX_CSS_INLINED}
   :root {
     --content-width: ${contentW}mm;

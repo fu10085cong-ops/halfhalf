@@ -90,7 +90,7 @@ Markdown → 分块 → 按模板贪心拼装 → 自动默认版（可直接导
 固定槽位的模板对任意内容太脆（8 个坑遇到 11 个块就崩）。这里的模板不锁死块数量，
 只描述"怎么拼"：
 
-```ts
+
 interface LayoutTemplate {
   id: string;
   gridColumns: number;      // 网格粒度，如 12

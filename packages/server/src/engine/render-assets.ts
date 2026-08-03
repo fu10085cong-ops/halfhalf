@@ -42,6 +42,36 @@ export const KATEX_CSS_INLINED = readFileSync(KATEX_CSS_PATH, 'utf-8').replace(
 );
 
 /**
+ * 正文/代码字体内嵌（跨平台版面可复现的地基）。
+ *
+ * 排版度量全部由字体的字宽表驱动，而系统默认中文字体三平台各不相同——macOS PingFang、
+ * Windows 微软雅黑、Linux/生产 Noto CJK——同一份材料量出的宽度不同，选档/填充/字号/页数
+ * 跟着变，冻结基线因此只对生成它的那台机器成立（RULES.md §4.21）。这里把字体钉死成随仓库
+ * 走的 Noto 子集，base64 内嵌进渲染 HTML（同 KaTeX 字体的做法，绕开 file:// 跨目录限制），
+ * 于是任意平台（含 Docker 生产）渲染同一份材料得到逐字一致的版面，基线从此可移植、代表生产。
+ *
+ * 字族链而非 unicode-range：靠浏览器逐字回退——拉丁字用 HH-Sans、中文落到 HH-Sans-CJK；
+ * 代码用等宽 HH-Mono、代码里的中文注释同样落到 HH-Sans-CJK。子集覆盖不到的生僻字才回退到
+ * 系统字体（极少，且只影响那个字形，不影响整体版面）。字重只内嵌 400/700（正文/加粗、标题）。
+ */
+const FONTS_DIR = path.join(__dirname, '../templates/fonts');
+
+function fontFace(family: string, weight: 400 | 700, file: string): string {
+  const b64 = readFileSync(path.join(FONTS_DIR, file)).toString('base64');
+  // font-display: block —— base64 字体即时可用，强制用它而非回退字体渲染（测量与渲染一致）
+  return `@font-face{font-family:"${family}";font-style:normal;font-weight:${weight};font-display:block;src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
+}
+
+export const FONT_CSS_INLINED = [
+  fontFace('HH-Sans', 400, 'latin-400-normal.woff2'),
+  fontFace('HH-Sans', 700, 'latin-700-normal.woff2'),
+  fontFace('HH-Sans-CJK', 400, 'chinese-simplified-400-normal.woff2'),
+  fontFace('HH-Sans-CJK', 700, 'chinese-simplified-700-normal.woff2'),
+  fontFace('HH-Mono', 400, 'mono-latin-400-normal.woff2'),
+  fontFace('HH-Mono', 700, 'mono-latin-700-normal.woff2'),
+].join('\n');
+
+/**
  * markdownToHtml 每次调用都从 hh-mermaid-0 开始编号，同一页面嵌多个块的 HTML 时
  * mermaid 占位 id 会互相撞车，导致 renderMermaidDiagrams 渲染错乱。
  * 嵌入前用块自己的 id 做前缀把占位 id 唯一化。

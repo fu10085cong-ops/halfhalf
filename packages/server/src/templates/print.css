@@ -12,7 +12,9 @@ body {
   margin: 0;
   padding: 0;
   color: #1a1a1a;
-  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 钉死随仓库内嵌的 Noto 子集（HH-Sans 拉丁 → HH-Sans-CJK 简中），三平台版面逐字一致
+     （见 render-assets.ts / RULES.md §4.21）；系统字体仅作子集覆盖不到的生僻字兜底 */
+  font-family: "HH-Sans", "HH-Sans-CJK", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 .hh-page {
@@ -76,7 +78,9 @@ h4 + * {
 /* 代码块：Shiki 输出的 <pre class="shiki"> 结构 */
 pre,
 code {
-  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  /* 等宽同样钉死内嵌字体（HH-Mono 拉丁 → HH-Sans-CJK 承接代码里的中文注释），
+     否则代码等宽字体三平台不同（SF Mono/Consolas/Liberation），代码密集判例版面漂移 */
+  font-family: "HH-Mono", "HH-Sans-CJK", "SF Mono", "Fira Code", Menlo, Consolas, monospace;
   font-size: 0.85em;
 }
 
